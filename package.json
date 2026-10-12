@@ -1,0 +1,14 @@
+{
+  "name": "minion-gg",
+  "version": "1.0.0",
+  "description": "Builds y estadísticas de League of Legends con la API de Riot",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,19 @@
+# Blueprint de Render para Minion.GG.
+# En Render: New > Blueprint, elige tu repositorio y completa las tres claves cuando las pida.
+services:
+  - type: web
+    name: minion-gg
+    runtime: node
+    plan: free            # Las instancias gratuitas se duermen tras un rato sin visitas
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: RIOT_API_KEY
+        sync: false       # Clave de Riot (developer.riotgames.com)
+      - key: SUPABASE_URL
+        sync: false       # Project URL de Supabase, p. ej. https://abcd1234.supabase.co
+      - key: SUPABASE_SECRET_KEY
+        sync: false       # Clave secreta (sb_secret_...) o service_role. Nunca la publiques.
