@@ -8,6 +8,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const Catalog = require("./public/js/catalog.js");
 
 function loadEnv(file) {
   try {
@@ -200,6 +201,26 @@ function createApp(opts) {
     return m;
   }
 
+  // Diagnóstico: comprueba que los nombres de objetos, runas y hechizos de data.js existan en Data Dragon
+  let ddAudit = null;
+  async function auditDD() {
+    if (ddAudit && Date.now() - ddAudit.t < 600000) return ddAudit.data;
+    const get = async url => {
+      const r = await doFetch(url);
+      if (r.status !== 200) throw new Error("Data Dragon respondió " + r.status);
+      return r.json();
+    };
+    const v = (await get(DDRAGON + "/api/versions.json"))[0];
+    const B = DDRAGON + "/cdn/" + v + "/data/";
+    const p = await Promise.all([
+      get(B + "es_MX/champion.json"), get(B + "en_US/item.json"), get(B + "es_MX/item.json"),
+      get(B + "en_US/runesReforged.json"), get(B + "es_MX/runesReforged.json"), get(B + "es_MX/summoner.json")
+    ]);
+    const data = Catalog.audit(Catalog.reduceDD({ version: v, champion: p[0], itemEn: p[1], itemEs: p[2], runesEn: p[3], runesEs: p[4], summoner: p[5] }));
+    ddAudit = { t: Date.now(), data: data };
+    return data;
+  }
+
   async function player(q) {
     const riotId = String(q.get("riotId") || "").trim();
     const region = String(q.get("region") || "la2");
@@ -278,9 +299,11 @@ function createApp(opts) {
     res.end(JSON.stringify(body));
   }
 
-  // Los scripts solo se cargan desde public/ (sin código en línea); los estilos en línea se permiten porque la página los usa en atributos.
+  // Los scripts solo se cargan desde public/ (sin código en línea). Data Dragon es el CDN oficial de Riot: de ahí salen
+  // los datos (connect-src) y las imágenes (img-src). Los estilos en línea se permiten porque la página los usa en atributos.
+  const DDRAGON = "https://ddragon.leagueoflegends.com";
   const CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-    "font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+    "font-src https://fonts.gstatic.com; connect-src 'self' " + DDRAGON + "; img-src 'self' data: " + DDRAGON + "; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
   return http.createServer(async (req, res) => {
     try {
@@ -288,6 +311,15 @@ function createApp(opts) {
       if (req.method !== "GET") return sendJson(res, 405, { error: "Método no permitido." });
       if (u.pathname === "/api/health") {
         return sendJson(res, 200, apiKey ? { ok: true, storage: !!store } : { ok: false, storage: !!store, reason: "Falta RIOT_API_KEY" });
+      }
+      if (u.pathname === "/api/ddcheck") {
+        const wait = tooMany(clientIp(req));
+        if (wait) return sendJson(res, 429, { error: "Demasiadas consultas seguidas. Espera " + wait + " segundos." }, { "Retry-After": String(wait) });
+        try {
+          return sendJson(res, 200, await auditDD());
+        } catch (e) {
+          return sendJson(res, 502, { error: "No se pudo consultar Data Dragon: " + e.message });
+        }
       }
       if (u.pathname === "/api/player") {
         if (!apiKey) return sendJson(res, 503, { error: "El servidor no tiene clave de Riot. Configura RIOT_API_KEY." });

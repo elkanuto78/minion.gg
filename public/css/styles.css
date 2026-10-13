@@ -162,3 +162,51 @@ form.add.riotform { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 .confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 [hidden] { display: none !important; }
 @media (prefers-reduced-motion: no-preference) { .champ, .btn, .chip { transition: border-color 0.15s, background 0.15s; } }
+
+/* ===== Imágenes oficiales (Data Dragon) ===== */
+.av { position: relative; display: inline-block; flex: none; line-height: 0; }
+.av svg { display: block; }
+.av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface-2); }
+.av-s { width: 32px; height: 32px; }
+.av-l { width: 96px; height: 96px; }
+.av-l img { border-width: 2px; border-radius: 8px; }
+.ico { border-radius: 4px; flex: none; background: var(--surface); object-fit: cover; }
+.ico.rune { background: #0d1a24; border-radius: 50%; padding: 2px; object-fit: contain; }
+.broken { display: none !important; }
+.champ .nm { flex: 1; min-width: 0; }
+.star { color: var(--accent); font-size: 12px; flex: none; }
+.champ .star { overflow: visible; }
+
+/* Cabecera del campeón con su arte */
+.bhead { position: relative; isolation: isolate; overflow: hidden; margin: -20px -20px 0; padding: 20px; border-radius: 8px 8px 0 0; }
+.bhead .splash { position: absolute; top: 0; right: 0; width: 80%; height: 100%; object-fit: cover; object-position: 50% 22%; z-index: -2; }
+.bhead::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, var(--surface) 22%, color-mix(in srgb, var(--surface) 55%, transparent) 62%, transparent 100%); }
+.tag.kind { border-color: var(--accent); color: var(--accent); }
+.basenote { border-left: 3px solid var(--accent-2); padding-left: 10px; }
+
+/* Objetos, hechizos y runas con imagen */
+.item { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px 4px 6px; }
+.item small { margin-right: 6px; }
+.path.spells { gap: 8px; }
+.path.spells li + li::before { content: none; }
+.sit li { align-items: center; }
+.sit b { display: inline-flex; align-items: center; gap: 8px; }
+.sit b span { color: var(--fg); }
+.ks { display: flex; align-items: center; gap: 12px; margin: 2px 0 10px; }
+.ks .key { margin: 0; }
+.rl { list-style: none; margin: 4px 0 14px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.rn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface-2); border-radius: 4px; padding: 3px 10px 3px 4px; font-size: 13.5px; font-weight: 500; }
+.rn.txt { padding-left: 10px; }
+.runes .lbl { margin-top: 6px; }
+.sp { margin-top: 16px; }
+.m0 { margin: 0; }
+
+/* Habilidades y consejos de Riot */
+.abil { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
+.ab { display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 12px; row-gap: 4px; align-items: start; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: var(--surface-2); }
+.ab .ico, .ab > span { grid-row: span 2; }
+.ab b { font-weight: 600; }
+.ab p { margin: 0; color: var(--muted); font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tips { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 70ch; }
+
+.legal { color: var(--muted); font-size: 12px; max-width: 85ch; margin: 28px 0 0; border-top: 1px solid var(--line); padding-top: 14px; }

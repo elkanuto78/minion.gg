@@ -195,7 +195,7 @@ const CH = [
 
   { id: "morgana", name: "Morgana", title: "La Caída", dmg: "AP", diff: 1,
     roles: {
-      support: B("Aery", "Hechicería: Manaflow Band, Transcendence, Gathering Storm", "Inspiración: Biscuit Delivery, Cosmic Insight",
+      support: B("Summon Aery", "Hechicería: Manaflow Band, Transcendence, Gathering Storm", "Inspiración: Biscuit Delivery, Cosmic Insight",
         ["Flash", "Heal"], "Q > W > E (R en 6, 11 y 16)", ["Objeto de soporte", "Control Ward"], "Sorcerer's Shoes",
         ["Imperial Mandate", "Zhonya's Hourglass", "Banshee's Veil"],
         [["Redemption", "Curación en peleas grandes."], ["Void Staff", "Contra resistencia mágica alta."], ["Mikael's Blessing", "Para liberar a tu tirador del control de masas."]],
@@ -205,7 +205,119 @@ const CH = [
         ["Luden's Companion", "Shadowflame", "Zhonya's Hourglass"],
         [["Banshee's Veil", "Contra magos con control de masas."], ["Rylai's Crystal Scepter", "Para ralentizar a los rivales."], ["Void Staff", "Contra resistencia mágica."]],
         "Con Dark Binding fijas al objetivo y tus ralentizaciones lo mantienen en tu alcance. Guarda E para esquivar el control de masas.") },
-    aram: M("Aery", ["Imperial Mandate", "Zhonya's Hourglass", "Banshee's Veil", "Void Staff", "Redemption"], "Dark Binding (Q) en un pasillo estrecho decide peleas."),
+    aram: M("Summon Aery", ["Imperial Mandate", "Zhonya's Hourglass", "Banshee's Veil", "Void Staff", "Redemption"], "Dark Binding (Q) en un pasillo estrecho decide peleas."),
     arena: A(["Imperial Mandate", "Zhonya's Hourglass", "Banshee's Veil", "Rylai's Crystal Scepter"], "Protege a tu compañero con E y fija al objetivo clave con Q.") }
 ];
 const BY_ID = Object.fromEntries(CH.map(c => [c.id, c]));
+
+/* ---------- Líneas por campeón ----------
+   Letras: T = top, J = jungla, M = mid, A = ADC, S = soporte (la primera es la línea principal).
+   La clave es el id de Data Dragon. Un campeón nuevo que no esté aquí se ubica según su clase. */
+const ROLE_MAP = {
+  Aatrox: "T", Ahri: "M", Akali: "MT", Akshan: "MA", Alistar: "S", Ambessa: "TJ", Amumu: "J", Anivia: "M", Annie: "MS",
+  Aphelios: "A", Ashe: "AS", AurelionSol: "M", Aurora: "MT", Azir: "M", Bard: "S", Belveth: "J", Blitzcrank: "S",
+  Brand: "SJM", Braum: "S", Briar: "J", Caitlyn: "A", Camille: "T", Cassiopeia: "M", Chogath: "TM", Corki: "M",
+  Darius: "T", Diana: "JM", DrMundo: "TJ", Draven: "A", Ekko: "JM", Elise: "J", Evelynn: "J", Ezreal: "A",
+  Fiddlesticks: "J", Fiora: "T", Fizz: "M", Galio: "MS", Gangplank: "T", Garen: "T", Gnar: "T", Gragas: "JT",
+  Graves: "J", Gwen: "T", Hecarim: "J", Heimerdinger: "MT", Hwei: "MS", Illaoi: "T", Irelia: "TM", Ivern: "J",
+  Janna: "S", JarvanIV: "J", Jax: "TJ", Jayce: "TM", Jhin: "A", Jinx: "A", Kaisa: "A", Kalista: "A", Karma: "SM",
+  Karthus: "JM", Kassadin: "M", Katarina: "M", Kayle: "TM", Kayn: "J", Kennen: "TM", Khazix: "J", Kindred: "J",
+  Kled: "T", KogMaw: "A", KSante: "T", Leblanc: "M", LeeSin: "J", Leona: "S", Lillia: "J", Lissandra: "M",
+  Lucian: "AM", Lulu: "S", Lux: "SM", Malphite: "TS", Malzahar: "M", Maokai: "ST", MasterYi: "J", Mel: "SM",
+  Milio: "S", MissFortune: "AS", MonkeyKing: "TJ", Mordekaiser: "T", Morgana: "SM", Naafiri: "MJ", Nami: "S",
+  Nasus: "T", Nautilus: "S", Neeko: "MS", Nidalee: "J", Nilah: "A", Nocturne: "J", Nunu: "J", Olaf: "TJ",
+  Orianna: "M", Ornn: "T", Pantheon: "TS", Poppy: "TJS", Pyke: "S", Qiyana: "MJ", Quinn: "T", Rakan: "S",
+  Rammus: "J", RekSai: "J", Rell: "S", Renata: "S", Renekton: "T", Rengar: "JT", Riven: "T", Rumble: "TM",
+  Ryze: "MT", Samira: "A", Sejuani: "J", Senna: "SA", Seraphine: "SA", Sett: "TS", Shaco: "JS", Shen: "T",
+  Shyvana: "J", Singed: "T", Sion: "T", Sivir: "A", Skarner: "J", Smolder: "A", Sona: "S", Soraka: "S",
+  Swain: "SM", Sylas: "MJ", Syndra: "M", TahmKench: "ST", Taliyah: "JM", Talon: "MJ", Taric: "S", Teemo: "T",
+  Thresh: "S", Tristana: "AM", Trundle: "JT", Tryndamere: "T", TwistedFate: "M", Twitch: "AJ", Udyr: "JT",
+  Urgot: "T", Varus: "AM", Vayne: "AT", Veigar: "MS", Velkoz: "SM", Vex: "M", Vi: "J", Viego: "J", Viktor: "M",
+  Vladimir: "MT", Volibear: "JT", Warwick: "J", Xayah: "A", Xerath: "SM", XinZhao: "J", Yasuo: "MT", Yone: "MT",
+  Yorick: "T", Yunara: "A", Yuumi: "S", Zac: "J", Zed: "MJ", Zeri: "A", Ziggs: "MA", Zilean: "SM", Zoe: "M",
+  Zyra: "SJ"
+};
+const CLASS_ES = { Fighter: "Luchador", Tank: "Tanque", Mage: "Mago", Assassin: "Asesino", Marksman: "Tirador", Support: "Soporte" };
+
+/* ---------- Builds base por clase ----------
+   Se usan para los campeones que todavía no tienen build detallada. No están ajustadas a cada campeón. */
+const BASE_SKILLS = "R en 6, 11 y 16. Sube primero la habilidad de la que más dependes y revisa tus habilidades más abajo.";
+const ARCH = {
+  "ap-mage": {
+    label: "mago o campeón de daño mágico",
+    runes: { key: "Arcane Comet", main: "Hechicería: Manaflow Band, Transcendence, Scorch", sec: "Inspiración: Magical Footwear, Cosmic Insight" },
+    skills: BASE_SKILLS, boots: "Sorcerer's Shoes",
+    core: ["Luden's Companion", "Shadowflame", "Rabadon's Deathcap"],
+    sit: [["Zhonya's Hourglass", "Contra asesinos y enemigos que te saltan encima."], ["Banshee's Veil", "Contra magos y equipos con mucho control de masas."], ["Void Staff", "Cuando el rival apila resistencia mágica."]],
+    tip: "Mantén la distancia, usa primero tus habilidades de mayor alcance y guarda el control de masas para quien intente entrar sobre ti."
+  },
+  "ap-assassin": {
+    label: "asesino de daño mágico",
+    runes: { key: "Electrocute", main: "Dominación: Cheap Shot, Eyeball Collection, Ultimate Hunter", sec: "Hechicería: Absolute Focus, Gathering Storm" },
+    skills: BASE_SKILLS, boots: "Sorcerer's Shoes",
+    core: ["Hextech Rocketbelt", "Shadowflame", "Rabadon's Deathcap"],
+    sit: [["Zhonya's Hourglass", "Contra equipos con mucho daño: te da un segundo para reaccionar."], ["Banshee's Veil", "Contra magos y control de masas."], ["Void Staff", "Contra resistencia mágica alta."]],
+    tip: "Busca a los objetivos frágiles (tiradores y magos) y entra cuando sus habilidades de escape estén en espera."
+  },
+  "ad-assassin": {
+    label: "asesino de daño físico",
+    runes: { key: "Electrocute", main: "Dominación: Sudden Impact, Eyeball Collection, Ultimate Hunter", sec: "Precisión: Triumph, Coup de Grace" },
+    skills: BASE_SKILLS, boots: "Ionian Boots of Lucidity",
+    core: ["Youmuu's Ghostblade", "Serylda's Grudge", "Edge of Night"],
+    sit: [["Maw of Malmortius", "Contra equipos con mucho daño mágico."], ["Guardian Angel", "Segunda vida en peleas largas."], ["Black Cleaver", "Contra equipos con mucha armadura."]],
+    tip: "Espera a que se gasten las habilidades clave del rival y entra por el flanco para eliminar al objetivo más frágil."
+  },
+  "adc-crit": {
+    label: "tirador",
+    runes: { key: "Lethal Tempo", main: "Precisión: Triumph, Legend: Alacrity, Cut Down", sec: "Inspiración: Magical Footwear, Biscuit Delivery" },
+    skills: BASE_SKILLS, boots: "Berserker's Greaves",
+    core: ["Kraken Slayer", "Phantom Dancer", "Infinity Edge"],
+    sit: [["Lord Dominik's Regards", "Contra tanques."], ["Bloodthirster", "Cuando necesitas sostenerte en la línea."], ["Guardian Angel", "Seguro frente a asesinos."]],
+    tip: "Mantente detrás de tu frontline y ataca al objetivo más cercano y seguro; no entres antes que los tanques."
+  },
+  "fighter": {
+    label: "luchador",
+    runes: { key: "Conqueror", main: "Precisión: Triumph, Legend: Alacrity, Last Stand", sec: "Resolución: Bone Plating, Unflinching" },
+    skills: BASE_SKILLS, boots: "Plated Steelcaps",
+    core: ["Trinity Force", "Sterak's Gage", "Black Cleaver"],
+    sit: [["Maw of Malmortius", "Contra equipos con mucho daño mágico."], ["Guardian Angel", "Segunda vida en peleas largas."], ["Death's Dance", "Contra equipos con mucho daño de ráfaga."]],
+    tip: "Pelea cuando tengas tus habilidades disponibles, busca intercambios largos y compra defensa si te enfocan."
+  },
+  "tank": {
+    label: "tanque",
+    runes: { key: "Grasp of the Undying", main: "Resolución: Demolish, Conditioning, Overgrowth", sec: "Inspiración: Biscuit Delivery, Magical Footwear" },
+    skills: BASE_SKILLS, boots: "Plated Steelcaps",
+    core: ["Sunfire Aegis", "Jak'Sho, The Protean", "Randuin's Omen"],
+    sit: [["Thornmail", "Contra equipos con mucho daño físico."], ["Force of Nature", "Contra equipos con daño mágico."], ["Abyssal Mask", "Para aumentar el daño de tu equipo."]],
+    tip: "Inicia las peleas cuando tu equipo esté listo y usa tu control de masas sobre el objetivo más peligroso del rival."
+  },
+  "sup-enchanter": {
+    label: "soporte de apoyo (curación y escudos)",
+    runes: { key: "Summon Aery", main: "Hechicería: Manaflow Band, Transcendence, Gathering Storm", sec: "Inspiración: Biscuit Delivery, Cosmic Insight" },
+    skills: BASE_SKILLS, boots: "Ionian Boots of Lucidity",
+    core: ["Moonstone Renewer", "Staff of Flowing Water", "Ardent Censer"],
+    sit: [["Redemption", "Curación en peleas grandes."], ["Mikael's Blessing", "Para liberar a tu aliado del control de masas."], ["Shurelya's Battlesong", "Para dar velocidad y entrar o salir de peleas."]],
+    tip: "Protege a tu tirador: guarda el escudo o la curación para cuando reciba el daño y mantén la visión del mapa."
+  },
+  "sup-tank": {
+    label: "soporte tanque",
+    runes: { key: "Aftershock", main: "Resolución: Font of Life, Bone Plating, Unflinching", sec: "Inspiración: Biscuit Delivery, Cosmic Insight" },
+    skills: BASE_SKILLS, boots: "Plated Steelcaps",
+    core: ["Locket of the Iron Solari", "Knight's Vow", "Zeke's Convergence"],
+    sit: [["Thornmail", "Contra equipos con daño físico."], ["Redemption", "Curación en peleas grandes."], ["Randuin's Omen", "Contra críticos."]],
+    tip: "Inicia con tu control de masas sobre el rival más expuesto y deja que tu tirador remate."
+  },
+  "sup-mage": {
+    label: "soporte mago",
+    runes: { key: "Arcane Comet", main: "Hechicería: Manaflow Band, Transcendence, Scorch", sec: "Inspiración: Biscuit Delivery, Cosmic Insight" },
+    skills: BASE_SKILLS, boots: "Sorcerer's Shoes",
+    core: ["Luden's Companion", "Shadowflame", "Zhonya's Hourglass"],
+    sit: [["Banshee's Veil", "Contra equipos con mucho control de masas."], ["Void Staff", "Contra tanques con resistencia mágica."], ["Redemption", "Cuando necesitas curar a tu equipo en peleas grandes."]],
+    tip: "Castiga al rival con tus habilidades de largo alcance y usa tu control de masas para proteger a tu tirador."
+  }
+};
+
+(function (g) {
+  g.MinionData = { ROLES, MODES, MODE_NAME, ROLE_NAME, DMG, DIFF, CH, BY_ID, ROLE_MAP, CLASS_ES, ARCH };
+  if (typeof module !== "undefined" && module.exports) module.exports = g.MinionData;
+})(typeof globalThis !== "undefined" ? globalThis : this);

@@ -39,6 +39,7 @@
           <h3>Campeón</h3>
           <input class="search" id="search" type="search" placeholder="Buscar campeón" aria-label="Buscar campeón" autocomplete="off">
           <div class="champs" id="champs" style="margin-top:8px"></div>
+          <p class="note" id="ddnote" role="status"></p>
         </div>
       </div>
       <article class="build" id="build" aria-live="polite"></article>
@@ -48,8 +49,17 @@
   <section id="view-stats" role="tabpanel" aria-labelledby="tab-stats" hidden>
     <div class="stats" id="stats"></div>
   </section>
+
+  <footer class="legal">
+    Minion.GG no está respaldado por Riot Games ni refleja las opiniones de Riot Games ni de nadie involucrado oficialmente en la producción
+    o administración de League of Legends. League of Legends y Riot Games son marcas comerciales o marcas registradas de Riot Games, Inc.
+    Las imágenes y los datos de campeones, objetos, runas y hechizos pertenecen a Riot Games y se cargan desde su CDN oficial (Data Dragon).
+  </footer>
 </div>
 <script src="/js/data.js"></script>
+<script src="/js/catalog.js"></script>
 <script src="/js/app.js"></script>
+<script src="/js/stats.js"></script>
+<script src="/js/main.js"></script>
 </body>
 </html>

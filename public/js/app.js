@@ -3,11 +3,14 @@ const $ = (s, r) => (r || document).querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sin almacenamiento */ } }
+// Texto plano a partir de las descripciones de Riot, que traen etiquetas HTML
+function plain(s) { return String(s == null ? "" : s).replace(/<br\s*\/?>/gi, " ").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim(); }
 
 function initials(name) {
   const parts = name.replace(/'/g, "").split(/\s+/).filter(Boolean);
   return (parts.length > 1 ? parts[0][0] + parts[1][0] : name.replace(/'/g, "").slice(0, 2)).toUpperCase();
 }
+// Insignia con iniciales: se ve mientras llega la imagen oficial y si esta no carga
 function badge(c, size) {
   return '<svg class="badge" width="' + size + '" height="' + size + '" viewBox="0 0 48 48" aria-hidden="true">' +
     '<polygon points="24,2 43,13 43,35 24,46 5,35 5,13" fill="var(--surface-2)" stroke="var(--accent)" stroke-width="2"/>' +
@@ -17,6 +20,11 @@ function roleIcon(id) {
   const r = ROLES.find(x => x.id === id);
   return '<svg viewBox="0 0 24 24" aria-hidden="true">' + r.p + '</svg>';
 }
+// Una imagen que falle se oculta y deja visible el texto o la insignia que hay debajo
+document.addEventListener("error", e => {
+  const t = e.target;
+  if (t && t.tagName === "IMG") t.classList.add("broken");
+}, true);
 
 /* ---------- Pestañas ---------- */
 function showTab(t) {
@@ -33,76 +41,213 @@ document.querySelector(".tabs").addEventListener("click", e => {
   if (b) showTab(b.dataset.tab);
 });
 
+/* ---------- Catálogo oficial de Riot (Data Dragon) ---------- */
+const DD_ROOT = "https://ddragon.leagueoflegends.com/";
+const DD_CACHE = "minion-dd-v1";
+let DD = null;            // datos reducidos de Data Dragon (o null si no cargaron)
+let RES = null;           // resolvedor de nombres a imágenes
+let CAT = [];             // campeones, ordenados por nombre
+let CATMAP = {};          // id en minúsculas -> campeón
+let ddState = "loading";  // loading | ok | fail
+const DETAIL = {};        // id en minúsculas -> habilidades y consejos de Riot, "loading" o "fail"
+
+function setCatalog() {
+  CAT = Catalog.buildCatalog(DD);
+  CATMAP = {};
+  CAT.forEach(c => { CATMAP[c.k] = c; });
+}
+
+function ddFetch(url, ms) {
+  const ctl = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), ms || 12000) : null;
+  return fetch(url, ctl ? { signal: ctl.signal } : undefined)
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .finally(() => { if (timer) clearTimeout(timer); });
+}
+
+async function loadDD() {
+  let cached = null;
+  try { cached = JSON.parse(lsGet(DD_CACHE) || "null"); } catch (e) { cached = null; }
+  let v = null;
+  try { v = (await ddFetch(DD_ROOT + "api/versions.json"))[0]; } catch (e) { v = null; }
+  if (v && cached && cached.v === v && cached.dd) return cached.dd;
+  if (!v) return cached && cached.dd ? cached.dd : null; // sin conexión: se usa la copia guardada, si hay
+  try {
+    const B = DD_ROOT + "cdn/" + v + "/data/";
+    const soft = p => ddFetch(B + p).catch(() => null);
+    const parts = await Promise.all([
+      ddFetch(B + "es_MX/champion.json"), soft("en_US/item.json"), soft("es_MX/item.json"),
+      soft("en_US/runesReforged.json"), soft("es_MX/runesReforged.json"), soft("es_MX/summoner.json")
+    ]);
+    const dd = Catalog.reduceDD({ version: v, champion: parts[0], itemEn: parts[1], itemEs: parts[2], runesEn: parts[3], runesEs: parts[4], summoner: parts[5] });
+    if (!dd || !dd.champs.length) throw new Error("catálogo vacío");
+    lsSet(DD_CACHE, JSON.stringify({ v: v, dd: dd }));
+    return dd;
+  } catch (e) {
+    return cached && cached.dd ? cached.dd : null;
+  }
+}
+
+// Habilidades y consejos del campeón (se piden solo al elegirlo)
+function ensureDetail(c) {
+  if (!RES || !c.online || !c.id || DETAIL[c.k]) return;
+  DETAIL[c.k] = "loading";
+  ddFetch(RES.detailUrl(c.id)).then(j => {
+    const d = j && j.data && (j.data[c.id] || j.data[Object.keys(j.data)[0]]);
+    DETAIL[c.k] = d && typeof d === "object" ? d : "fail";
+  }).catch(() => { DETAIL[c.k] = "fail"; }).then(() => {
+    if (S.champ === c.k && ddState === "ok") renderBuild();
+  });
+}
+
+/* ---------- Piezas de la interfaz ---------- */
+function icoImg(src, px, cls) {
+  return '<img class="ico' + (cls ? " " + cls : "") + '" src="' + esc(src) + '" alt="" width="' + px + '" height="' + px + '" loading="lazy">';
+}
+function avatar(c, size) {
+  const px = size === "l" ? 96 : 32;
+  const src = RES && c.online && c.img ? RES.champImg(c.img) : "";
+  return '<span class="av av-' + size + '">' + badge(c, px) +
+    (src ? '<img src="' + esc(src) + '" alt="" width="' + px + '" height="' + px + '"' + (size === "l" ? "" : ' loading="lazy"') + ">" : "") + "</span>";
+}
+// Objeto con su imagen y nombre en español; si no se encuentra, solo el texto
+function itemInner(name) {
+  const r = RES ? RES.item(name) : null;
+  return (r ? icoImg(r.img, 32) : "") + "<span>" + esc(r ? r.name : name) + "</span>";
+}
+function itemChip(name, tag, core) {
+  const r = RES ? RES.item(name) : null;
+  return '<span class="item' + (core ? " core" : "") + '">' + (r ? icoImg(r.img, 32) : "") + "<span>" +
+    (tag !== "" && tag != null ? "<small>" + esc(tag) + "</small>" : "") + esc(r ? r.name : name) + "</span></span>";
+}
+function itemPath(b) {
+  return '<ul class="path"><li><span class="item"><small>Inicio</small>' + b.start.map(itemInner).join(" + ") + "</span></li>" +
+    "<li>" + itemChip(b.boots, "Botas") + "</li>" + b.core.map((n, i) => "<li>" + itemChip(n, i + 1, true) + "</li>").join("") + "</ul>";
+}
+function itemList(arr) {
+  return '<ul class="path">' + arr.map((n, i) => "<li>" + itemChip(n, i + 1, true) + "</li>").join("") + "</ul>";
+}
+function spellList(names) {
+  return '<ul class="path spells">' + names.map(n => {
+    const s = RES ? RES.spell(n) : null;
+    return '<li><span class="item">' + (s ? icoImg(s.img, 32) : "") + "<span>" + esc(s ? s.name : n) + "</span></span></li>";
+  }).join("") + "</ul>";
+}
+function runeLi(name) {
+  const r = RES ? RES.rune(name) : null;
+  return r ? '<li class="rn">' + icoImg(r.img, 28, "rune") + "<span>" + esc(r.name) + "</span></li>"
+    : '<li class="rn txt"><span>' + esc(name) + "</span></li>";
+}
+function keystone(name) {
+  const r = RES ? RES.rune(name) : null;
+  return '<div class="ks">' + (r ? icoImg(r.img, 56, "rune") : "") + '<p class="key">' + esc(r ? r.name : name) + "</p></div>";
+}
+function runeBlock(r) {
+  const main = Catalog.parseTreeLine(r.main), sec = Catalog.parseTreeLine(r.sec);
+  const mt = RES ? RES.tree(main.tree) : null, st = RES ? RES.tree(sec.tree) : null;
+  return '<div class="runes"><h3>Runas</h3>' + keystone(r.key) +
+    '<p class="lbl">Árbol principal · ' + esc(mt ? mt.name : main.tree) + '</p><ul class="rl">' + main.runes.map(runeLi).join("") + "</ul>" +
+    '<p class="lbl">Árbol secundario · ' + esc(st ? st.name : sec.tree) + '</p><ul class="rl">' + sec.runes.map(runeLi).join("") + "</ul></div>";
+}
+function abilitiesHtml(c) {
+  const d = DETAIL[c.k];
+  if (!d || typeof d !== "object") return d === "loading" ? '<p class="note">Cargando habilidades…</p>' : "";
+  const cards = [];
+  if (d.passive && d.passive.name) {
+    cards.push(["Pasiva", d.passive.name, d.passive.description, d.passive.image && RES.passiveImg(d.passive.image.full)]);
+  }
+  (d.spells || []).forEach((s, i) => cards.push([["Q", "W", "E", "R"][i] || "", s.name, s.description, s.image && RES.abilityImg(s.image.full)]));
+  if (!cards.length) return "";
+  return '<div><h3>Habilidades</h3><ul class="abil">' + cards.map(a =>
+    '<li class="ab">' + (a[3] ? icoImg(a[3], 44) : "<span></span>") + "<b>" + esc(a[0]) + " · " + esc(a[1]) + "</b><p>" + esc(plain(a[2])) + "</p></li>").join("") + "</ul></div>";
+}
+function riotTips(c) {
+  const d = DETAIL[c.k];
+  const tips = d && typeof d === "object" ? (d.allytips || []).map(plain).filter(Boolean).slice(0, 3) : [];
+  return tips.length ? '<div class="tipbox"><h3>Consejos de Riot para jugar con ' + esc(c.name) + "</h3><ul class=\"tips\">" + tips.map(t => "<li>" + esc(t) + "</li>").join("") + "</ul></div>" : "";
+}
+
 /* ---------- Builds ---------- */
 const S = { mode: "sr", role: "mid", champ: "ahri", q: "" };
 
-function champsForRole(role) { return CH.filter(c => c.roles[role]); }
+function champsForRole(role) { return CAT.filter(c => c.roles.indexOf(role) >= 0); }
 function visibleChamps() {
-  const q = S.q.trim().toLowerCase();
-  const base = S.mode === "sr" ? champsForRole(S.role) : CH;
-  return base.filter(c => !q || c.name.toLowerCase().includes(q));
+  const q = Catalog.norm(S.q);
+  const base = S.mode === "sr" ? champsForRole(S.role) : CAT;
+  return base.filter(c => !q || Catalog.norm(c.name).indexOf(q) >= 0);
 }
 function ensureValid() {
+  if (!CATMAP[S.champ]) S.champ = CATMAP.ahri ? "ahri" : (CAT[0] ? CAT[0].k : S.champ);
   if (S.mode === "sr") {
-    const list = champsForRole(S.role);
-    if (!BY_ID[S.champ].roles[S.role] && list.length) S.champ = list[0].id;
+    const c = CATMAP[S.champ];
+    if (c && c.roles.indexOf(S.role) < 0) {
+      const list = champsForRole(S.role);
+      if (list.length) S.champ = list[0].k;
+    }
   }
+}
+function ddNote() {
+  if (ddState === "loading") return "Cargando el catálogo oficial de Riot…";
+  if (ddState === "fail") return "No se pudo cargar el catálogo de Riot: solo se muestran los campeones con build detallada y sin imágenes. Recarga la página para reintentar.";
+  return "Datos e imágenes de Riot (Data Dragon " + DD.v + "). ★ = build detallada; el resto usa una build base de su clase.";
 }
 
 function renderPicker() {
   $("#modes").innerHTML = MODES.map(m =>
-    '<button type="button" data-mode="' + m.id + '" aria-pressed="' + (S.mode === m.id) + '">' + m.n + '</button>').join("");
+    '<button type="button" data-mode="' + m.id + '" aria-pressed="' + (S.mode === m.id) + '">' + m.n + "</button>").join("");
   const sr = S.mode === "sr";
   $("#roles").innerHTML = ROLES.map(r =>
-    '<button type="button" class="chip" data-role="' + r.id + '" aria-pressed="' + (sr && S.role === r.id) + '"' + (sr ? "" : " disabled") + '>' +
-    roleIcon(r.id) + r.n + '</button>').join("");
+    '<button type="button" class="chip" data-role="' + r.id + '" aria-pressed="' + (sr && S.role === r.id) + '"' + (sr ? "" : " disabled") + ">" +
+    roleIcon(r.id) + r.n + "</button>").join("");
   $("#rolenote").hidden = sr;
   const list = visibleChamps();
   $("#champs").innerHTML = list.length ? list.map(c =>
-    '<button type="button" class="champ" data-champ="' + c.id + '" aria-pressed="' + (S.champ === c.id) + '">' +
-    badge(c, 30) + '<span>' + esc(c.name) + '</span></button>').join("") :
+    '<button type="button" class="champ" data-champ="' + c.k + '" aria-pressed="' + (S.champ === c.k) + '">' +
+    avatar(c, "s") + '<span class="nm">' + esc(c.name) + "</span>" + (c.curated ? '<span class="star" title="Build detallada">★</span>' : "") + "</button>").join("") :
     '<p class="empty">Ningún campeón coincide con la búsqueda.</p>';
-}
-
-function itemChips(arr, core) {
-  return arr.map((it, i) => '<li><span class="item' + (core ? " core" : "") + '">' + (core ? "<small>" + (i + 1) + "</small>" : "") + esc(it) + "</span></li>").join("");
+  $("#ddnote").textContent = list.length + " campeones. " + ddNote();
 }
 
 function renderBuild() {
-  const c = BY_ID[S.champ];
-  let html = '<div class="bhead">' + badge(c, 96) + '<div class="t"><h2>' + esc(c.name) + '</h2><p>' + esc(c.title) + '</p>' +
-    '<div class="tags"><span class="tag">' + esc(MODE_NAME[S.mode]) + '</span>' +
-    (S.mode === "sr" ? '<span class="tag">' + esc(ROLE_NAME[S.role]) + '</span>' : "") +
-    '<span class="tag">' + esc(DMG[c.dmg]) + '</span><span class="tag">' + esc(DIFF[c.diff]) + '</span></div>' +
-    '<a class="artlink" href="https://www.leagueoflegends.com/es-mx/champions/' + ({ leesin: "lee-sin", masteryi: "master-yi" }[c.id] || c.id) + '/" target="_blank" rel="noopener">Ver arte oficial ↗</a></div></div>';
+  const c = CATMAP[S.champ];
+  if (!c) { $("#build").innerHTML = ""; return; }
+  ensureDetail(c);
+  const gb = Catalog.getBuild(c, S.mode, S.role), b = gb.b, base = gb.kind === "base";
+  const splash = RES && c.online && c.id ? RES.splash(c.id) : "";
+  const classes = Catalog.classText(c);
+
+  let html = '<div class="bhead">' + (splash ? '<img class="splash" src="' + esc(splash) + '" alt="">' : "") + avatar(c, "l") +
+    '<div class="t"><h2>' + esc(c.name) + "</h2><p>" + esc(c.title) + "</p>" +
+    '<div class="tags"><span class="tag kind">' + (base ? "Build base de clase" : "Build detallada ★") + "</span>" +
+    '<span class="tag">' + esc(MODE_NAME[S.mode]) + "</span>" +
+    (S.mode === "sr" ? '<span class="tag">' + esc(ROLE_NAME[S.role]) + "</span>" : "") +
+    '<span class="tag">' + esc(classes || DMG[c.dmg]) + '</span><span class="tag">' + esc(DIFF[c.diff]) + "</span></div></div></div>";
+
+  if (base) {
+    html += '<p class="note basenote">Esta es una build base para ' + esc(b.label) + ". Sirve como punto de partida, pero no está ajustada a las habilidades de " +
+      esc(c.name) + ". Las builds detalladas, hechas a mano para cada campeón, se marcan con ★ en la lista." +
+      (c.estRoles && S.mode === "sr" ? " Su línea se estimó según su clase." : "") + "</p>";
+  }
 
   if (S.mode === "sr") {
-    const b = c.roles[S.role];
-    html += '<div class="cols"><div class="runes"><h3>Runas</h3><p class="key">' + esc(b.runes.key) + '</p>' +
-      '<p><span class="lbl">Árbol principal</span>' + esc(b.runes.main) + '</p>' +
-      '<p><span class="lbl">Árbol secundario</span>' + esc(b.runes.sec) + '</p></div>' +
-      '<div><h3>Hechizos de invocador</h3><ul class="path" style="gap:6px">' +
-      b.summs.map(s => '<li><span class="item">' + esc(s) + '</span></li>').join("") + '</ul>' +
-      '<h3 style="margin-top:16px">Orden de habilidades</h3><p style="margin:0">' + esc(b.skills) + '</p></div></div>';
-    html += '<div><h3>Camino de objetos</h3><ul class="path">' +
-      '<li><span class="item"><small>Inicio</small>' + esc(b.start.join(" + ")) + '</span></li>' +
-      '<li><span class="item"><small>Botas</small>' + esc(b.boots) + '</span></li>' +
-      itemChips(b.core, true) + '</ul></div>';
+    html += '<div class="cols">' + runeBlock(b.runes) +
+      "<div><h3>Hechizos de invocador</h3>" + spellList(b.summs) +
+      '<h3 class="sp">Orden de habilidades</h3><p class="m0">' + esc(b.skills) + "</p></div></div>";
+    html += "<div><h3>Camino de objetos</h3>" + itemPath(b) + "</div>";
     html += '<div><h3>Situacionales</h3><ul class="sit">' +
-      b.sit.map(s => '<li><b>' + esc(s[0]) + '</b><span>' + esc(s[1]) + '</span></li>').join("") + '</ul></div>';
-    html += '<div class="tipbox"><h3>Consejo de juego</h3><p>' + esc(b.tip) + '</p></div>';
+      b.sit.map(s => "<li><b>" + itemInner(s[0]) + "</b><span>" + esc(s[1]) + "</span></li>").join("") + "</ul></div>";
   } else if (S.mode === "aram") {
-    const b = c.aram;
-    html += '<div class="cols"><div class="runes"><h3>Piedra clave</h3><p class="key">' + esc(b.key) + '</p>' +
-      '<p class="note">Completa el resto de runas con las de tu línea habitual. Flash y Mark (bola de nieve) funcionan con casi todos los campeones.</p></div>' +
-      '<div><h3>Objetos en orden de compra</h3><ul class="path">' + itemChips(b.items, true) + '</ul></div></div>';
-    html += '<div class="tipbox"><h3>Consejo de juego</h3><p>' + esc(b.tip) + '</p></div>';
+    html += '<div class="cols"><div class="runes"><h3>Piedra clave</h3>' + keystone(b.key) +
+      '<p class="note">Completa el resto de runas con las de tu línea habitual.</p>' +
+      "<h3 class=\"sp\">Hechizos de invocador</h3>" + spellList(["Flash", "Mark"]) + "</div>" +
+      "<div><h3>Objetos en orden de compra</h3>" + itemList(b.items) + "</div></div>";
   } else {
-    const b = c.arena;
-    html += '<div><h3>Objetos en orden de prioridad</h3><ul class="path">' + itemChips(b.items, true) + '</ul>' +
+    html += "<div><h3>Objetos en orden de prioridad</h3>" + itemList(b.items) +
       '<p class="note" style="margin-top:10px">En cada ronda eliges aumentos: prioriza los que refuercen tu plan de daño o de supervivencia.</p></div>';
-    html += '<div class="tipbox"><h3>Consejo de juego</h3><p>' + esc(b.tip) + '</p></div>';
   }
+  html += '<div class="tipbox"><h3>Consejo de juego</h3><p>' + esc(b.tip) + "</p></div>";
+  if (base) html += riotTips(c);
+  html += abilitiesHtml(c);
   html += '<p class="disc">Estas builds son recomendaciones generales de uso común. Los objetos, runas y ajustes cambian con cada parche, así que compáralas con la tienda y las notas del parche actual antes de jugar.</p>';
   $("#build").innerHTML = html;
 }
@@ -123,280 +268,8 @@ $("#roles").addEventListener("click", e => {
 $("#champs").addEventListener("click", e => {
   const b = e.target.closest("[data-champ]");
   if (!b) return;
-  S.champ = b.dataset.champ; renderPicker(); renderBuild();
+  S.champ = b.dataset.champ;
+  document.querySelectorAll("#champs .champ").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.champ === S.champ)));
+  renderBuild();
 });
 $("#search").addEventListener("input", e => { S.q = e.target.value; renderPicker(); });
-
-/* ---------- Estadísticas ---------- */
-const KEY = "forja-lol-v1";
-const blankDB = () => ({ name: "", matches: [], ranks: [], riotId: "", region: "la2" });
-let DB = blankDB();
-let confirmClear = false;
-
-function isoDaysAgo(n) {
-  const d = new Date(); d.setDate(d.getDate() - n);
-  const p = x => String(x).padStart(2, "0");
-  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
-}
-function seed() {
-  // champ, mode, role, K, D, A, CS, minutos, victoria, hace N días
-  const rows = [
-    ["ahri", "sr", "mid", 9, 3, 8, 212, 31, 1, 14], ["ahri", "sr", "mid", 4, 5, 6, 180, 29, 0, 13],
-    ["jinx", "sr", "adc", 12, 4, 7, 267, 34, 1, 12], ["jinx", "sr", "adc", 6, 7, 5, 201, 27, 0, 11],
-    ["yasuo", "sr", "mid", 11, 8, 4, 230, 33, 1, 10], ["leesin", "sr", "jungle", 5, 4, 12, 161, 28, 1, 9],
-    ["thresh", "sr", "support", 1, 5, 18, 32, 32, 1, 8], ["lux", "aram", "", 14, 9, 21, 0, 19, 1, 7],
-    ["ahri", "sr", "mid", 7, 2, 10, 224, 30, 1, 6], ["darius", "sr", "top", 8, 6, 3, 248, 31, 0, 5],
-    ["jinx", "sr", "adc", 10, 3, 9, 281, 33, 1, 4], ["zed", "sr", "mid", 6, 6, 3, 195, 26, 0, 3],
-    ["ahri", "sr", "mid", 12, 2, 9, 236, 32, 1, 2], ["leesin", "sr", "jungle", 3, 7, 8, 144, 25, 0, 1]
-  ];
-  return rows.map((r, i) => ({ id: "ex" + i, champ: r[0], mode: r[1], role: r[2], k: r[3], d: r[4], a: r[5], cs: r[6], min: r[7], win: !!r[8], date: isoDaysAgo(r[9]), ex: true }));
-}
-function loadDB() {
-  const raw = lsGet(KEY);
-  if (raw) {
-    try {
-      const o = JSON.parse(raw);
-      if (o && Array.isArray(o.matches)) {
-        DB = {
-          name: String(o.name || ""),
-          matches: o.matches.filter(m => m && typeof m.champ === "string" && m.champ),
-          ranks: Array.isArray(o.ranks) ? o.ranks : [],
-          riotId: String(o.riotId || ""),
-          region: String(o.region || "la2")
-        };
-        return;
-      }
-    } catch (e) { /* datos dañados: se vuelve a sembrar */ }
-  }
-  DB = Object.assign(blankDB(), { matches: seed() });
-}
-function saveDB() { lsSet(KEY, JSON.stringify(DB)); }
-
-function viewList() {
-  const real = DB.matches.filter(m => !m.ex);
-  return real.length ? real : DB.matches.filter(m => m.ex);
-}
-function kdaRatio(k, d, a) { return d === 0 ? k + a : (k + a) / d; }
-function fmt(n, dec) { return Number(n).toFixed(dec); }
-function kdaText(k, d, a) { return d === 0 ? "Perfecto" : fmt((k + a) / d, 2); }
-
-function aggregate(list) {
-  const t = { g: list.length, w: 0, k: 0, d: 0, a: 0, cs: 0, csMin: 0 };
-  list.forEach(m => {
-    if (m.win) t.w++;
-    t.k += m.k; t.d += m.d; t.a += m.a;
-    if (m.cs > 0 && m.min > 0) { t.cs += m.cs; t.csMin += m.min; }
-  });
-  return t;
-}
-function groupBy(list, keyFn) {
-  const g = {};
-  list.forEach(m => { const k = keyFn(m); if (k) (g[k] = g[k] || []).push(m); });
-  return Object.entries(g).map(([k, v]) => ({ k, t: aggregate(v) })).sort((x, y) => y.t.g - x.t.g || y.t.w - x.t.w);
-}
-function pct(w, g) { return g ? Math.round((w / g) * 100) : 0; }
-
-function chartSvg(list) {
-  const pts = list.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).slice(-20);
-  if (!pts.length) return "";
-  const W = 560, H = 220, L = 38, R = 14, T = 14, Bm = 30, pw = W - L - R, ph = H - T - Bm;
-  const vals = pts.map(m => kdaRatio(m.k, m.d, m.a));
-  const yMax = Math.max(4, Math.ceil(Math.max.apply(null, vals) / 2) * 2);
-  const y = v => T + (1 - v / yMax) * ph;
-  const x = i => L + (pts.length === 1 ? pw / 2 : (i / (pts.length - 1)) * pw);
-  const ticks = [0, yMax / 2, yMax];
-  let s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="KDA por partida, de la más antigua a la más reciente">';
-  ticks.forEach(v => {
-    s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--line)" stroke-width="1"/>' +
-      '<text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="11" fill="var(--muted)">' + v + "</text>";
-  });
-  if (ticks.indexOf(3) === -1 && 3 < yMax) {
-    s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(3) + '" y2="' + y(3) + '" stroke="var(--accent)" stroke-width="1" stroke-dasharray="4 4"/>' +
-      '<text x="' + (L - 6) + '" y="' + (y(3) + 4) + '" text-anchor="end" font-size="11" fill="var(--accent)">3</text>';
-  }
-  s += '<path d="' + vals.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join(" ") + '" fill="none" stroke="var(--accent-2)" stroke-width="2"/>';
-  pts.forEach((m, i) => {
-    const v = vals[i];
-    s += m.win
-      ? '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="5" fill="var(--good)" stroke="var(--surface)" stroke-width="1.5"/>'
-      : '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="4.5" fill="var(--surface)" stroke="var(--bad)" stroke-width="2"/>';
-  });
-  s += '<text x="' + L + '" y="' + (H - 8) + '" font-size="11" fill="var(--muted)">Partida 1</text>' +
-    '<text x="' + (W - R) + '" y="' + (H - 8) + '" text-anchor="end" font-size="11" fill="var(--muted)">Partida ' + pts.length + "</text></svg>";
-  return s;
-}
-
-function renderStats() {
-  const list = viewList();
-  const showingEx = list.length > 0 && list.every(m => m.ex);
-  const t = aggregate(list);
-  const ordered = list.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  const names = {};
-  list.forEach(m => { names[m.champ] = BY_ID[m.champ] ? BY_ID[m.champ].name : (m.cn || m.champ); });
-  const byChamp = groupBy(list, m => m.champ);
-  const byRole = groupBy(list.filter(m => m.mode === "sr"), m => m.role);
-  const byMode = groupBy(list, m => m.mode);
-  let h = "";
-
-  h += '<div class="who"><label for="pname">Invocador</label><input class="nameinput" id="pname" type="text" maxlength="40" placeholder="Tu nombre de invocador" autocomplete="off">' +
-    '<span class="note">Las estadísticas se calculan con las partidas que registras o importas y se guardan en este navegador.</span></div>';
-  if (DB.ranks && DB.ranks.length) {
-    h += '<div class="roles">' + DB.ranks.map(r => '<span class="chip">' +
-      esc(r.queue === "RANKED_SOLO_5x5" ? "Solo/Dúo" : r.queue === "RANKED_FLEX_SR" ? "Flex" : r.queue) + ": " +
-      esc(r.tier) + " " + esc(r.rank) + " · " + esc(r.lp) + " LP · " + esc(r.wins) + "V " + esc(r.losses) + "D</span>").join("") + "</div>";
-  }
-
-  if (showingEx) {
-    h += '<div class="banner"><p>Estás viendo partidas de ejemplo. Registra las tuyas y estas se dejan de mostrar.</p>' +
-      '<button type="button" class="btn" data-act="rm-ex">Quitar ejemplos</button></div>';
-  }
-
-  if (!t.g) {
-    h += '<div class="panel"><h2>Aún no hay partidas</h2><p class="note">Registra tu primera partida en el formulario de abajo para ver tu KDA, tu porcentaje de victorias y tus campeones más jugados.</p></div>';
-  } else {
-    h += '<div class="summary">' +
-      '<div class="sum"><div class="l">Partidas</div><div class="v">' + t.g + '</div><div class="s">' + t.w + " V · " + (t.g - t.w) + " D</div></div>" +
-      '<div class="sum"><div class="l">Victorias</div><div class="v">' + pct(t.w, t.g) + '%</div><div class="s">porcentaje de victorias</div></div>' +
-      '<div class="sum"><div class="l">KDA</div><div class="v">' + kdaText(t.k, t.d, t.a) + '</div><div class="s">(K + A) / D</div></div>' +
-      '<div class="sum"><div class="l">K / D / A medio</div><div class="v">' + fmt(t.k / t.g, 1) + " / " + fmt(t.d / t.g, 1) + " / " + fmt(t.a / t.g, 1) + '</div><div class="s">por partida</div></div>' +
-      '<div class="sum"><div class="l">CS por minuto</div><div class="v">' + (t.csMin ? fmt(t.cs / t.csMin, 1) : "—") + '</div><div class="s">sin contar partidas sin CS</div></div></div>';
-
-    h += '<div class="panel chart"><h2>KDA por partida</h2>' + chartSvg(list) +
-      '<div class="legend"><span><b class="win">●</b> Victoria</span><span><b class="loss">○</b> Derrota</span><span>Línea punteada: KDA de 3</span></div></div>';
-
-    h += '<div class="two"><div class="panel"><h2>Por campeón</h2><div class="tbl"><table><thead><tr><th>Campeón</th><th class="n">Part.</th><th class="n">Victorias</th><th class="n">KDA</th><th class="n">CS/min</th></tr></thead><tbody>' +
-      byChamp.map(r => '<tr><td>' + (BY_ID[r.k] ? '<button type="button" class="linkbtn" data-build="' + r.k + '">' + esc(names[r.k]) + '</button>' : esc(names[r.k])) + '</td><td class="n">' + r.t.g + '</td><td class="n">' + pct(r.t.w, r.t.g) + '%</td><td class="n">' + kdaText(r.t.k, r.t.d, r.t.a) + '</td><td class="n">' + (r.t.csMin ? fmt(r.t.cs / r.t.csMin, 1) : "—") + "</td></tr>").join("") +
-      '</tbody></table></div></div>' +
-      '<div class="panel"><h2>Por línea y modo</h2><div class="tbl"><table><thead><tr><th>Grupo</th><th class="n">Part.</th><th class="n">Victorias</th><th class="n">KDA</th></tr></thead><tbody>' +
-      byRole.map(r => '<tr><td>' + esc(ROLE_NAME[r.k] || r.k) + '</td><td class="n">' + r.t.g + '</td><td class="n">' + pct(r.t.w, r.t.g) + '%</td><td class="n">' + kdaText(r.t.k, r.t.d, r.t.a) + "</td></tr>").join("") +
-      byMode.map(r => '<tr><td>' + esc(MODE_NAME[r.k] || r.k) + ' (modo)</td><td class="n">' + r.t.g + '</td><td class="n">' + pct(r.t.w, r.t.g) + '%</td><td class="n">' + kdaText(r.t.k, r.t.d, r.t.a) + "</td></tr>").join("") +
-      '</tbody></table></div></div></div>';
-
-    h += '<div class="panel"><h2>Últimas partidas</h2><div class="tbl"><table><thead><tr><th>Fecha</th><th>Campeón</th><th>Modo</th><th class="n">K / D / A</th><th class="n">KDA</th><th class="n">CS</th><th>Resultado</th><th></th></tr></thead><tbody>' +
-      ordered.slice(0, 15).map(m => '<tr><td>' + esc(m.date) + '</td><td>' + (BY_ID[m.champ] ? '<button type="button" class="linkbtn" data-build="' + m.champ + '">' + esc(names[m.champ]) + '</button>' : esc(names[m.champ])) + (m.ex ? '<span class="ex">Ejemplo</span>' : "") + '</td><td>' +
-        esc(m.mode === "sr" ? (ROLE_NAME[m.role] || "Grieta") : MODE_NAME[m.mode]) + '</td><td class="n">' + m.k + " / " + m.d + " / " + m.a + '</td><td class="n">' + kdaText(m.k, m.d, m.a) + '</td><td class="n">' + (m.cs > 0 ? m.cs : "—") +
-        '</td><td class="' + (m.win ? "win" : "loss") + '">' + (m.win ? "Victoria" : "Derrota") + '</td><td><button type="button" class="linkbtn" data-del="' + esc(m.id) + '" aria-label="Eliminar partida">Eliminar</button></td></tr>').join("") +
-      '</tbody></table></div></div>';
-  }
-
-  if (API.ok) {
-    h += '<div class="panel"><h2>Importar desde Riot</h2><form class="add riotform" id="riotform" novalidate>' +
-      '<label for="r-id">Riot ID<input id="r-id" type="text" maxlength="40" placeholder="Nombre#TAG" autocomplete="off"></label>' +
-      '<label for="r-region">Servidor<select id="r-region">' + REGIONS.map(r => '<option value="' + r[0] + '">' + esc(r[1]) + "</option>").join("") + '</select></label>' +
-      '<div><button type="submit" class="btn primary" id="r-btn">Importar últimas partidas</button></div></form>' +
-      '<p class="formmsg" id="r-msg" role="status" style="color:' + (importMsg.k === "ok" ? "var(--good)" : "var(--bad)") + '">' + esc(importMsg.t) + '</p></div>';
-  } else {
-    h += '<div class="panel"><h2>Importar desde Riot</h2><p class="note">Esta opción se activa al ejecutar Minion.GG con su servidor (en tu computadora o en Render), que guarda tus claves fuera del navegador. En esta versión puedes registrar partidas a mano.</p></div>';
-  }
-
-  h += '<div class="panel"><h2>Registrar partida</h2><form class="add" id="addform" novalidate>' +
-    '<label for="f-champ">Campeón<select id="f-champ">' + CH.map(c => '<option value="' + c.id + '">' + esc(c.name) + "</option>").join("") + '</select></label>' +
-    '<label for="f-mode">Modo<select id="f-mode">' + MODES.map(m => '<option value="' + m.id + '">' + esc(MODE_NAME[m.id]) + "</option>").join("") + '</select></label>' +
-    '<label for="f-role" id="l-role">Línea<select id="f-role">' + ROLES.map(r => '<option value="' + r.id + '">' + esc(r.n) + "</option>").join("") + '</select></label>' +
-    '<label for="f-win">Resultado<select id="f-win"><option value="1">Victoria</option><option value="0">Derrota</option></select></label>' +
-    '<label for="f-k">Kills<input id="f-k" type="number" min="0" max="99" inputmode="numeric" value="0"></label>' +
-    '<label for="f-d">Muertes<input id="f-d" type="number" min="0" max="99" inputmode="numeric" value="0"></label>' +
-    '<label for="f-a">Asistencias<input id="f-a" type="number" min="0" max="99" inputmode="numeric" value="0"></label>' +
-    '<label for="f-cs">CS<input id="f-cs" type="number" min="0" max="999" inputmode="numeric" value="0"></label>' +
-    '<label for="f-min">Minutos<input id="f-min" type="number" min="1" max="90" inputmode="numeric" value="25"></label>' +
-    '<label for="f-date">Fecha<input id="f-date" type="date" value="' + isoDaysAgo(0) + '"></label>' +
-    '<div><button type="submit" class="btn primary">Guardar partida</button></div></form>' +
-    '<p class="formmsg" id="formmsg" role="alert"></p></div>';
-
-  h += '<div class="confirm">' + (confirmClear
-    ? '<span>¿Borrar todas las partidas y el nombre?</span><button type="button" class="btn danger" data-act="clear-yes">Sí, borrar todo</button><button type="button" class="btn" data-act="clear-no">Cancelar</button>'
-    : '<button type="button" class="btn" data-act="clear">Borrar todos los datos</button>') + '</div>';
-
-  $("#stats").innerHTML = h;
-  $("#pname").value = DB.name;
-  if ($("#r-id")) { $("#r-id").value = DB.riotId; $("#r-region").value = DB.region; }
-  syncRoleField();
-}
-
-function syncRoleField() {
-  const mode = $("#f-mode");
-  if (mode) $("#l-role").hidden = mode.value !== "sr";
-}
-
-$("#stats").addEventListener("change", e => { if (e.target.id === "f-mode") syncRoleField(); });
-$("#stats").addEventListener("input", e => {
-  if (e.target.id === "pname") { DB.name = e.target.value; saveDB(); }
-});
-$("#stats").addEventListener("click", e => {
-  const bd = e.target.closest("[data-build]");
-  if (bd) {
-    S.champ = bd.dataset.build; S.mode = "sr";
-    const c = BY_ID[S.champ]; S.role = Object.keys(c.roles)[0]; S.q = ""; $("#search").value = "";
-    renderAll(); showTab("builds"); window.scrollTo(0, 0);
-    return;
-  }
-  const del = e.target.closest("[data-del]");
-  if (del) { DB.matches = DB.matches.filter(m => m.id !== del.dataset.del); saveDB(); renderStats(); return; }
-  const act = e.target.closest("[data-act]");
-  if (!act) return;
-  const a = act.dataset.act;
-  if (a === "rm-ex") { DB.matches = DB.matches.filter(m => !m.ex); saveDB(); renderStats(); }
-  if (a === "clear") { confirmClear = true; renderStats(); }
-  if (a === "clear-no") { confirmClear = false; renderStats(); }
-  if (a === "clear-yes") { DB = blankDB(); confirmClear = false; saveDB(); renderStats(); }
-});
-$("#stats").addEventListener("submit", e => {
-  e.preventDefault();
-  if (e.target.id === "riotform") { doImport(); return; }
-  if (e.target.id !== "addform") return;
-  const num = id => Number($("#" + id).value);
-  const k = num("f-k"), d = num("f-d"), a = num("f-a"), cs = num("f-cs"), min = num("f-min");
-  const msg = $("#formmsg");
-  const bad = [k, d, a, cs].some(v => !Number.isFinite(v) || v < 0 || !Number.isInteger(v));
-  if (bad) { msg.textContent = "Kills, muertes, asistencias y CS deben ser números enteros de 0 en adelante."; return; }
-  if (!Number.isFinite(min) || min < 1) { msg.textContent = "Indica la duración de la partida en minutos (mínimo 1)."; return; }
-  const date = $("#f-date").value || isoDaysAgo(0);
-  const mode = $("#f-mode").value;
-  DB.matches.push({ id: "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), champ: $("#f-champ").value, mode: mode, role: mode === "sr" ? $("#f-role").value : "", k: k, d: d, a: a, cs: cs, min: min, win: $("#f-win").value === "1", date: date, ex: false });
-  saveDB(); renderStats();
-  const m2 = $("#formmsg"); if (m2) { m2.style.color = "var(--good)"; m2.textContent = "Partida guardada."; }
-});
-
-/* ---------- Importación desde Riot (requiere el servidor) ---------- */
-const API = { ok: false };
-const REGIONS = [
-  ["la1", "LAN (Latinoamérica Norte)"], ["la2", "LAS (Latinoamérica Sur)"], ["na1", "Norteamérica"], ["br1", "Brasil"],
-  ["euw1", "Europa Oeste"], ["eun1", "Europa Nórdica y Este"], ["kr", "Corea"], ["jp1", "Japón"],
-  ["oc1", "Oceanía"], ["tr1", "Turquía"], ["ru", "Rusia"]
-];
-let importMsg = { t: "", k: "" };
-
-async function doImport() {
-  const id = $("#r-id").value.trim(), region = $("#r-region").value;
-  DB.riotId = id; DB.region = region; saveDB();
-  if (!/^.{3,16}#[A-Za-z0-9]{3,5}$/.test(id)) {
-    importMsg = { t: "Escribe tu Riot ID completo, por ejemplo Nombre#LAS.", k: "err" };
-    renderStats();
-    return;
-  }
-  $("#r-btn").disabled = true;
-  $("#r-btn").textContent = "Importando…";
-  try {
-    const r = await fetch("/api/player?riotId=" + encodeURIComponent(id) + "&region=" + encodeURIComponent(region) + "&count=20");
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || "No se pudo importar (error " + r.status + ").");
-    let added = 0;
-    (j.matches || []).forEach(m => { if (!DB.matches.some(x => x.id === m.id)) { DB.matches.push(m); added++; } });
-    DB.ranks = j.ranks || [];
-    if (!DB.name) DB.name = j.gameName + "#" + j.tagLine;
-    saveDB();
-    importMsg = { t: (added ? "Se importaron " + added + " partidas nuevas." : "No hay partidas nuevas desde la última importación.") + (j.stored ? " Historial guardado en la base de datos." : ""), k: "ok" };
-  } catch (err) {
-    importMsg = { t: err.message || "No se pudo conectar con el servidor.", k: "err" };
-  }
-  renderStats();
-}
-
-/* ---------- Inicio ---------- */
-loadDB();
-fetch("/api/health").then(r => (r.ok ? r.json() : null)).then(j => {
-  API.ok = !!(j && j.ok);
-  if (API.ok && !$("#view-stats").hidden) renderStats();
-}).catch(() => { /* sin servidor: solo registro manual */ });
-renderAll();
-if (location.hash === "#stats") showTab("stats");
