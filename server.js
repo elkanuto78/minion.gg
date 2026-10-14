@@ -265,12 +265,14 @@ function createApp(opts) {
     }
     const gameName = acc.gameName || parts[1], tagLine = acc.tagLine || parts[2];
 
-    let ranks = [];
+    let ranks = [], ranksOk = false;
     try {
       const entries = await riot(region, "/lol/league/v4/entries/by-puuid/" + encodeURIComponent(acc.puuid));
       ranks = entries.map(e => ({ queue: e.queueType, tier: e.tier, rank: e.rank, lp: e.leaguePoints, wins: e.wins, losses: e.losses }));
+      ranksOk = true;
     } catch (e) {
       if (e.status === 429) throw e; // el rango es opcional; cualquier otro fallo se ignora
+      console.warn("No se pudo leer el rango:", e.status || e.message);
     }
 
     const ids = await riot(route, "/lol/match/v5/matches/by-puuid/" + encodeURIComponent(acc.puuid) + "/ids?start=0&count=" + count);
@@ -309,7 +311,7 @@ function createApp(opts) {
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
       .slice(0, HISTORY_LIMIT);
 
-    const data = { gameName: gameName, tagLine: tagLine, ranks: ranks, matches: matches, stored: storeOk };
+    const data = { gameName: gameName, tagLine: tagLine, ranks: ranks, ranksOk: ranksOk, matches: matches, stored: storeOk };
     playerCache.set(key, { t: Date.now(), data: data });
     return data;
   }
