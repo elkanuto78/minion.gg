@@ -173,12 +173,12 @@ const S = { mode: "sr", role: "mid", champ: "ahri", q: "" };
 function champsForRole(role) { return CAT.filter(c => c.roles.indexOf(role) >= 0); }
 function visibleChamps() {
   const q = Catalog.norm(S.q);
-  const base = S.mode === "sr" ? champsForRole(S.role) : CAT;
+  const base = S.mode === "sr" && S.role ? champsForRole(S.role) : CAT;
   return base.filter(c => !q || Catalog.norm(c.name).indexOf(q) >= 0);
 }
 function ensureValid() {
-  if (!CATMAP[S.champ]) S.champ = CATMAP.ahri ? "ahri" : (CAT[0] ? CAT[0].k : S.champ);
-  if (S.mode === "sr") {
+  if (S.champ && !CATMAP[S.champ]) S.champ = CATMAP.ahri ? "ahri" : (CAT[0] ? CAT[0].k : S.champ);
+  if (S.mode === "sr" && S.role) {
     const c = CATMAP[S.champ];
     if (c && c.roles.indexOf(S.role) < 0) {
       const list = champsForRole(S.role);
@@ -196,7 +196,7 @@ function renderPicker() {
   $("#modes").innerHTML = MODES.map(m =>
     '<button type="button" data-mode="' + m.id + '" aria-pressed="' + (S.mode === m.id) + '">' + m.n + "</button>").join("");
   const sr = S.mode === "sr";
-  $("#roles").innerHTML = ROLES.map(r =>
+  $("#roles").innerHTML = '<button type="button" class="chip" data-role="" aria-pressed="' + (sr && !S.role) + '"' + (sr ? "" : " disabled") + ">Todas</button>" + ROLES.map(r =>
     '<button type="button" class="chip" data-role="' + r.id + '" aria-pressed="' + (sr && S.role === r.id) + '"' + (sr ? "" : " disabled") + ">" +
     roleIcon(r.id) + r.n + "</button>").join("");
   $("#rolenote").hidden = sr;
@@ -210,9 +210,10 @@ function renderPicker() {
 
 function renderBuild() {
   const c = CATMAP[S.champ];
-  if (!c) { $("#build").innerHTML = ""; return; }
+  if (!c) { $("#build").innerHTML = '<p class="note">Elige un campeón de la lista para ver su build.</p>'; return; }
   ensureDetail(c);
-  const gb = Catalog.getBuild(c, S.mode, S.role), b = gb.b, base = gb.kind === "base";
+  const role = S.role || c.main || c.roles[0] || "mid";
+  const gb = Catalog.getBuild(c, S.mode, role), b = gb.b, base = gb.kind === "base";
   const splash = RES && c.online && c.id ? RES.splash(c.id) : "";
   const classes = Catalog.classText(c);
 
@@ -220,7 +221,7 @@ function renderBuild() {
     '<div class="t"><h2>' + esc(c.name) + "</h2><p>" + esc(c.title) + "</p>" +
     '<div class="tags"><span class="tag kind">' + (base ? "Build base de clase" : "Build detallada ★") + "</span>" +
     '<span class="tag">' + esc(MODE_NAME[S.mode]) + "</span>" +
-    (S.mode === "sr" ? '<span class="tag">' + esc(ROLE_NAME[S.role]) + "</span>" : "") +
+    (S.mode === "sr" ? '<span class="tag">' + esc(ROLE_NAME[role]) + "</span>" : "") +
     '<span class="tag">' + esc(classes || DMG[c.dmg]) + '</span><span class="tag">' + esc(DIFF[c.diff]) + "</span></div></div></div>";
 
   if (base) {
@@ -263,12 +264,12 @@ $("#modes").addEventListener("click", e => {
 $("#roles").addEventListener("click", e => {
   const b = e.target.closest("[data-role]");
   if (!b || b.disabled) return;
-  S.role = b.dataset.role; renderAll();
+  S.role = S.role === b.dataset.role ? "" : b.dataset.role; renderAll(); // al pulsar la línea elegida se deselecciona y se ven todas
 });
 $("#champs").addEventListener("click", e => {
   const b = e.target.closest("[data-champ]");
   if (!b) return;
-  S.champ = b.dataset.champ;
+  S.champ = S.champ === b.dataset.champ ? "" : b.dataset.champ; // pulsar de nuevo deselecciona
   document.querySelectorAll("#champs .champ").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.champ === S.champ)));
   renderBuild();
 });
