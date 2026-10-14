@@ -19,7 +19,7 @@ function match(id, queueId, dur, me) {
     metadata: { matchId: id },
     info: {
       queueId, gameDuration: dur, gameCreation: Date.UTC(2026, 9, 10, 15, 0, 0),
-      participants: [Object.assign({ puuid: "P1", championName: "Kaisa", kills: 9, deaths: 3, assists: 7, totalMinionsKilled: 200, neutralMinionsKilled: 12, win: true, teamPosition: "BOTTOM" }, me || {}), { puuid: "OTRO", championName: "Ahri" }]
+      participants: [Object.assign({ puuid: "P1", championName: "Kaisa", kills: 9, deaths: 3, assists: 7, totalMinionsKilled: 200, neutralMinionsKilled: 12, win: true, teamPosition: "BOTTOM", champLevel: 16, item0: 6672, item1: 3006, item2: 0, item3: 0, item4: 0, item5: 0, item6: 3340, summoner1Id: 4, summoner2Id: 7, totalDamageDealtToChampions: 21000, goldEarned: 12500, visionScore: 18, perks: { statPerks: { offense: 5005, flex: 5008, defense: 5011 }, styles: [{ description: "primaryStyle", style: 8000, selections: [{ perk: 8005 }, { perk: 9111 }, { perk: 9104 }, { perk: 8014 }] }, { description: "subStyle", style: 8300, selections: [{ perk: 8304 }, { perk: 8347 }] }] } }, me || {}), { puuid: "OTRO", championName: "Ahri" }]
     }
   };
 }
@@ -187,3 +187,12 @@ const rawStatus = (base, p) => new Promise((resolve, reject) => {
   [plain, noKey, a, b, legacy, c, lm].forEach(s => s.close());
   console.log("Todas las pruebas pasaron");
 })().catch(e => { console.error(e); process.exit(1); });
+
+{
+  const m = require("./server.js").mapMatch(MATCHES.LA2_1, "P1");
+  assert.deepStrictEqual(m.items, [6672, 3006, 0, 0, 0, 0, 3340]);
+  assert.deepStrictEqual(m.spells, [4, 7]);
+  assert.deepStrictEqual(m.perks, { ps: 8000, ss: 8300, p: [8005, 9111, 9104, 8014], s: [8304, 8347], sh: [5005, 5008, 5011] });
+  assert.strictEqual(m.lvl, 16); assert.strictEqual(m.dmg, 21000);
+  console.log("ok mapMatch detalle");
+}

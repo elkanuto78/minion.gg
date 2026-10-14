@@ -63,8 +63,25 @@ function mapMatch(match, puuid) {
     min: Math.max(1, Math.round(sec / 60)),
     win: !!me.win,
     date: new Date(created).toISOString().slice(0, 10),
-    ex: false
+    ex: false,
+    lvl: me.champLevel | 0,
+    items: [0, 1, 2, 3, 4, 5, 6].map(i => me["item" + i] | 0),
+    spells: [me.summoner1Id | 0, me.summoner2Id | 0],
+    perks: mapPerks(me.perks),
+    dmg: me.totalDamageDealtToChampions | 0,
+    gold: me.goldEarned | 0,
+    vis: me.visionScore | 0
   };
+}
+
+function mapPerks(pk) {
+  const st = (pk && pk.styles) || [];
+  const pri = st.find(x => x.description === "primaryStyle") || st[0];
+  const sec = st.find(x => x.description === "subStyle") || st[1];
+  if (!pri) return null;
+  const ids = x => ((x && x.selections) || []).map(y => y.perk | 0);
+  const sp = (pk && pk.statPerks) || {};
+  return { ps: pri.style | 0, ss: sec ? sec.style | 0 : 0, p: ids(pri), s: ids(sec), sh: [sp.offense | 0, sp.flex | 0, sp.defense | 0] };
 }
 
 /* ---------- Archivos estáticos (carpeta public/) ---------- */
@@ -105,10 +122,13 @@ function serveStatic(publicDir, pathname, res, csp) {
 
 /* ---------- Supabase (opcional) ---------- */
 function toRow(m, puuid) {
-  return { id: m.id, puuid: puuid, champ: m.champ, cn: m.cn || m.champ, mode: m.mode, role: m.role || "", k: m.k, d: m.d, a: m.a, cs: m.cs, minutes: m.min, win: m.win, played_on: m.date };
+  return { id: m.id, puuid: puuid, champ: m.champ, cn: m.cn || m.champ, mode: m.mode, role: m.role || "", k: m.k, d: m.d, a: m.a, cs: m.cs, minutes: m.min, win: m.win, played_on: m.date,
+    level: m.lvl == null ? null : m.lvl, items: m.items || null, spells: m.spells || null, perks: m.perks || null,
+    damage: m.dmg == null ? null : m.dmg, gold: m.gold == null ? null : m.gold, vision: m.vis == null ? null : m.vis };
 }
 function fromRow(r) {
-  return { id: r.id, champ: r.champ, cn: r.cn, mode: r.mode, role: r.role || "", k: r.k, d: r.d, a: r.a, cs: r.cs, min: r.minutes, win: r.win, date: String(r.played_on).slice(0, 10), ex: false };
+  return { id: r.id, champ: r.champ, cn: r.cn, mode: r.mode, role: r.role || "", k: r.k, d: r.d, a: r.a, cs: r.cs, min: r.minutes, win: r.win, date: String(r.played_on).slice(0, 10), ex: false,
+    lvl: r.level, items: r.items, spells: r.spells, perks: r.perks, dmg: r.damage, gold: r.gold, vis: r.vision };
 }
 
 function createStore(url, key, doFetch) {
@@ -267,7 +287,7 @@ function createApp(opts) {
         console.warn("Supabase no disponible, se usa solo Riot:", e.message);
       }
     }
-    const known = new Set(saved.map(m => m.id));
+    const known = new Set(saved.filter(m => m.perks).map(m => m.id)); // sin detalle (runas) = se vuelve a pedir
     const missing = ids.filter(id => !known.has("riot-" + id));
 
     const fresh = [];
@@ -302,8 +322,9 @@ function createApp(opts) {
   // Los scripts solo se cargan desde public/ (sin código en línea). Data Dragon es el CDN oficial de Riot: de ahí salen
   // los datos (connect-src) y las imágenes (img-src). Los estilos en línea se permiten porque la página los usa en atributos.
   const DDRAGON = "https://ddragon.leagueoflegends.com";
+  const CDRAGON = "https://raw.communitydragon.org";
   const CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-    "font-src https://fonts.gstatic.com; connect-src 'self' " + DDRAGON + "; img-src 'self' data: " + DDRAGON + "; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+    "font-src https://fonts.gstatic.com; connect-src 'self' " + DDRAGON + "; img-src 'self' data: " + DDRAGON + " " + CDRAGON + "; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
   return http.createServer(async (req, res) => {
     try {

@@ -24,6 +24,13 @@
   }
 
   /* ---------- Data Dragon: reducir las respuestas a lo que se usa ---------- */
+  const SHARDS = {
+    5001: ["Vida escalable", "HealthScaling"], 5002: ["Armadura", "Armor"], 5003: ["Resistencia mágica", "MagicRes"],
+    5005: ["Velocidad de ataque", "AttackSpeed"], 5007: ["Reducción de enfriamiento", "CDRScaling"],
+    5008: ["Fuerza adaptable", "AdaptiveForce"], 5010: ["Velocidad de movimiento", "MovementSpeed"],
+    5011: ["Vida", "HealthScaling"], 5013: ["Tenacidad", "Tenacity"]
+  };
+
   function reduceDD(raw) {
     const ch = raw && raw.champion && raw.champion.data;
     if (!ch) return null;
@@ -67,7 +74,7 @@
     });
 
     const sp = (raw.summoner && raw.summoner.data) || {};
-    Object.keys(sp).forEach(id => { out.spells[id] = { name: sp[id].name, img: sp[id].image && sp[id].image.full }; });
+    Object.keys(sp).forEach(id => { out.spells[id] = { key: String(sp[id].key || ""), name: sp[id].name, img: sp[id].image && sp[id].image.full }; });
     return out;
   }
 
@@ -81,8 +88,32 @@
         [r.en, r.key].forEach(n => { const k = norm(n); if (!runeIdx[k]) runeIdx[k] = { r: r, t: t }; });
       });
     });
+    const runeById = {}, treeById = {}, spellByKey = {};
+    (dd.trees || []).forEach(t => { treeById[t.id] = t; t.runes.forEach(r => { runeById[r.id] = { r: r, t: t }; }); });
+    Object.keys(dd.spells || {}).forEach(id => { const s = dd.spells[id]; if (s && s.key) spellByKey[s.key] = { id: id, s: s }; });
     return {
       v: v,
+      itemById(id) {
+        id = String(id | 0);
+        if (id === "0") return null;
+        return { id: id, name: (dd.itemEs && dd.itemEs[id]) || "Objeto " + id, img: CDN + v + "/img/item/" + id + ".png" };
+      },
+      spellByKey(key) {
+        const e = spellByKey[String(key)];
+        return e && e.s.img ? { id: e.id, name: e.s.name, img: CDN + v + "/img/spell/" + e.s.img } : null;
+      },
+      runeById(id) {
+        const e = runeById[id];
+        return e ? { id: e.r.id, name: e.r.name, img: CDN + "img/" + e.r.icon, tree: e.t.id } : null;
+      },
+      treeById(id) {
+        const t = treeById[id];
+        return t ? { id: t.id, name: t.name, img: CDN + "img/" + t.icon } : null;
+      },
+      shard(id) {
+        const S = SHARDS[id];
+        return S ? { id: id, name: S[0], img: CDN + "img/perk-images/StatMods/StatMods" + S[1] + "Icon.png" } : null;
+      },
       item(name) {
         const id = dd.itemByName[norm(name)];
         return id ? { id: id, name: dd.itemEs[id], img: CDN + v + "/img/item/" + id + ".png" } : null;

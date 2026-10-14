@@ -43,7 +43,7 @@ document.querySelector(".tabs").addEventListener("click", e => {
 
 /* ---------- Catálogo oficial de Riot (Data Dragon) ---------- */
 const DD_ROOT = "https://ddragon.leagueoflegends.com/";
-const DD_CACHE = "minion-dd-v1";
+const DD_CACHE = "minion-dd-v2";
 let DD = null;            // datos reducidos de Data Dragon (o null si no cargaron)
 let RES = null;           // resolvedor de nombres a imágenes
 let CAT = [];             // campeones, ordenados por nombre

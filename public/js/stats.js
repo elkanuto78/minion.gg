@@ -97,6 +97,78 @@ function chartSvg(list) {
   return s;
 }
 
+/* ---------- Rango: emblema + datos ---------- */
+const TIERS = {
+  IRON: ["Hierro", "#7a6a64"], BRONZE: ["Bronce", "#a8682f"], SILVER: ["Plata", "#9aa7b1"], GOLD: ["Oro", "#d8a73c"],
+  PLATINUM: ["Platino", "#3fb2a8"], EMERALD: ["Esmeralda", "#2fae6a"], DIAMOND: ["Diamante", "#5b8dee"],
+  MASTER: ["Maestro", "#b05fd6"], GRANDMASTER: ["Gran Maestro", "#d9534f"], CHALLENGER: ["Aspirante", "#f0c75e"]
+};
+const EMBLEM_URL = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblem/emblem-";
+const QUEUE_NAME = { RANKED_SOLO_5x5: "Solo/Dúo", RANKED_FLEX_SR: "Flex" };
+
+function rankEmblem(tier) {
+  const t = TIERS[tier] || ["", "#6b7280"];
+  const letter = t[0] ? t[0].charAt(0) : "?";
+  // Escudo propio de respaldo; la imagen oficial se pone encima y, si no carga, se oculta y queda el escudo.
+  return '<span class="emblem" style="--tier:' + t[1] + '"><svg viewBox="0 0 48 56" width="64" height="74" aria-hidden="true">' +
+    '<path d="M24 2 44 10v20c0 12-8 20-20 24C12 50 4 42 4 30V10z" fill="var(--tier)" fill-opacity=".25" stroke="var(--tier)" stroke-width="3"/>' +
+    '<text x="24" y="35" text-anchor="middle" font-size="22" font-weight="700" fill="var(--tier)">' + esc(letter) + '</text></svg>' +
+    (TIERS[tier] ? '<img src="' + EMBLEM_URL + tier.toLowerCase() + '.png" alt="" width="84" height="84" loading="lazy">' : "") + '</span>';
+}
+function rankCards(ranks) {
+  const by = {};
+  (ranks || []).forEach(r => { by[r.queue] = r; });
+  if (!ranks || !ranks.length) return "";
+  return '<div class="ranks">' + ["RANKED_SOLO_5x5", "RANKED_FLEX_SR"].map(q => {
+    const r = by[q], name = QUEUE_NAME[q];
+    if (!r) return '<div class="rank unr">' + rankEmblem("") + '<div><div class="rq">' + name + '</div><div class="rt">Sin clasificar</div></div></div>';
+    const tn = (TIERS[r.tier] || [r.tier])[0], big = ["MASTER", "GRANDMASTER", "CHALLENGER"].indexOf(r.tier) >= 0;
+    const g = (r.wins | 0) + (r.losses | 0);
+    return '<div class="rank">' + rankEmblem(r.tier) + '<div><div class="rq">' + name + '</div><div class="rt">' + esc(tn) + (big ? "" : " " + esc(r.rank)) + '</div>' +
+      '<div class="rs">' + esc(r.lp) + ' LP · ' + esc(r.wins) + 'V ' + esc(r.losses) + 'D' + (g ? ' · ' + pct(r.wins, g) + '%' : '') + '</div></div></div>';
+  }).join("") + '</div>';
+}
+
+/* ---------- Historial con campeón, build y runas ---------- */
+function champIcon(key) {
+  const c = CATMAP[key];
+  return c ? avatar(c, "s") : "";
+}
+function riotImg(r, cls) { return r ? icoImg(r.img, 28, cls) : ""; }
+function matchRow(m, names) {
+  const c = CATMAP[m.champ];
+  const head = '<div class="hm">' + champIcon(m.champ) +
+    '<div class="hn">' + (c ? '<button type="button" class="linkbtn" data-build="' + m.champ + '">' + esc(names[m.champ]) + '</button>' : esc(names[m.champ])) + (m.ex ? '<span class="ex">Ejemplo</span>' : "") +
+    '<div class="hs">' + esc(m.date) + " · " + esc(m.mode === "sr" ? (ROLE_NAME[m.role] || "Grieta") : MODE_NAME[m.mode]) + (m.lvl ? " · Nv " + m.lvl : "") + '</div></div></div>' +
+    '<div class="hr ' + (m.win ? "win" : "loss") + '"><b>' + (m.win ? "Victoria" : "Derrota") + '</b><span>' + m.min + ' min</span></div>' +
+    '<div class="hk"><b>' + m.k + " / " + m.d + " / " + m.a + '</b><span>' + kdaText(m.k, m.d, m.a) + ' KDA' + (m.cs > 0 ? " · " + m.cs + " CS" : "") + '</span></div>';
+  let build = "", detail = "";
+  if (RES && m.items) {
+    const its = m.items.slice(0, 6).map(id => RES.itemById(id));
+    build += '<div class="hb">' + its.map(it => it ? '<span class="slot" title="' + esc(it.name) + '">' + icoImg(it.img, 28) + '</span>' : '<span class="slot empty"></span>').join("") +
+      (m.items[6] ? '<span class="slot ward" title="Tótem">' + icoImg(RES.itemById(m.items[6]).img, 28) + '</span>' : "") + '</div>';
+  }
+  if (RES && m.spells) {
+    build += '<div class="hp">' + m.spells.map(k => { const s = RES.spellByKey(k); return s ? '<span class="slot" title="' + esc(s.name) + '">' + icoImg(s.img, 28) + '</span>' : ""; }).join("") + '</div>';
+  }
+  if (RES && m.perks) {
+    const p = m.perks, key = RES.runeById(p.p[0]), sec = RES.treeById(p.ss);
+    build += '<div class="hp">' + (key ? '<span class="slot rune" title="' + esc(key.name) + '">' + icoImg(key.img, 28) + '</span>' : "") +
+      (sec ? '<span class="slot rune sm" title="' + esc(sec.name) + '">' + icoImg(sec.img, 20) + '</span>' : "") + '</div>';
+    const rl = ids => ids.map(id => { const r = RES.runeById(id); return r ? '<span class="item">' + icoImg(r.img, 28) + '<span>' + esc(r.name) + '</span></span>' : ""; }).join("");
+    const pt = RES.treeById(p.ps);
+    detail = '<div class="hd"><div><h4>Runas · ' + esc(pt ? pt.name : "") + '</h4><div class="rl">' + rl(p.p) + '</div></div>' +
+      '<div><h4>Secundarias · ' + esc(sec ? sec.name : "") + '</h4><div class="rl">' + rl(p.s) + '</div>' +
+      '<div class="rl">' + (p.sh || []).map(id => { const s = RES.shard(id); return s ? '<span class="item">' + icoImg(s.img, 20) + '<span>' + esc(s.name) + '</span></span>' : ""; }).join("") + '</div></div>' +
+      '<div><h4>Objetos</h4><div class="rl">' + m.items.map(id => RES.itemById(id)).filter(Boolean).map(it => '<span class="item">' + icoImg(it.img, 28) + '<span>' + esc(it.name) + '</span></span>').join("") + '</div></div>' +
+      '<div><h4>Partida</h4><p class="note">' + (m.dmg != null ? "Daño a campeones: " + m.dmg.toLocaleString("es") + " · " : "") + (m.gold != null ? "Oro: " + m.gold.toLocaleString("es") + " · " : "") + (m.vis != null ? "Visión: " + m.vis : "") + '</p></div></div>';
+  }
+  const del = '<button type="button" class="linkbtn" data-del="' + esc(m.id) + '" aria-label="Eliminar partida">Eliminar</button>';
+  if (!build) build = '<div class="hb note">' + (m.items === undefined && !m.ex && String(m.id).indexOf("riot-") === 0 ? "Vuelve a importar para ver la build" : "Sin datos de build") + '</div>';
+  return '<details class="mrow ' + (m.win ? "win" : "loss") + '"' + '><summary><div class="line">' + head + '<div class="hbuild">' + build + '</div></div></summary>' +
+    (detail || "") + '<div class="hx">' + del + '</div></details>';
+}
+
 function renderStats() {
   const list = viewList();
   const showingEx = list.length > 0 && list.every(m => m.ex);
@@ -111,11 +183,7 @@ function renderStats() {
 
   h += '<div class="who"><label for="pname">Invocador</label><input class="nameinput" id="pname" type="text" maxlength="40" placeholder="Tu nombre de invocador" autocomplete="off">' +
     '<span class="note">Las estadísticas se calculan con las partidas que registras o importas y se guardan en este navegador.</span></div>';
-  if (DB.ranks && DB.ranks.length) {
-    h += '<div class="roles">' + DB.ranks.map(r => '<span class="chip">' +
-      esc(r.queue === "RANKED_SOLO_5x5" ? "Solo/Dúo" : r.queue === "RANKED_FLEX_SR" ? "Flex" : r.queue) + ": " +
-      esc(r.tier) + " " + esc(r.rank) + " · " + esc(r.lp) + " LP · " + esc(r.wins) + "V " + esc(r.losses) + "D</span>").join("") + "</div>";
-  }
+  h += rankCards(DB.ranks);
 
   if (showingEx) {
     h += '<div class="banner"><p>Estás viendo partidas de ejemplo. Registra las tuyas y estas se dejan de mostrar.</p>' +
@@ -136,18 +204,14 @@ function renderStats() {
       '<div class="legend"><span><b class="win">●</b> Victoria</span><span><b class="loss">○</b> Derrota</span><span>Línea punteada: KDA de 3</span></div></div>';
 
     h += '<div class="two"><div class="panel"><h2>Por campeón</h2><div class="tbl"><table><thead><tr><th>Campeón</th><th class="n">Part.</th><th class="n">Victorias</th><th class="n">KDA</th><th class="n">CS/min</th></tr></thead><tbody>' +
-      byChamp.map(r => '<tr><td>' + (CATMAP[r.k] ? '<button type="button" class="linkbtn" data-build="' + r.k + '">' + esc(names[r.k]) + '</button>' : esc(names[r.k])) + '</td><td class="n">' + r.t.g + '</td><td class="n">' + pct(r.t.w, r.t.g) + '%</td><td class="n">' + kdaText(r.t.k, r.t.d, r.t.a) + '</td><td class="n">' + (r.t.csMin ? fmt(r.t.cs / r.t.csMin, 1) : "—") + "</td></tr>").join("") +
+      byChamp.map(r => '<tr><td class="cn">' + champIcon(r.k) + (CATMAP[r.k] ? '<button type="button" class="linkbtn" data-build="' + r.k + '">' + esc(names[r.k]) + '</button>' : esc(names[r.k])) + '</td><td class="n">' + r.t.g + '</td><td class="n">' + pct(r.t.w, r.t.g) + '%</td><td class="n">' + kdaText(r.t.k, r.t.d, r.t.a) + '</td><td class="n">' + (r.t.csMin ? fmt(r.t.cs / r.t.csMin, 1) : "—") + "</td></tr>").join("") +
       '</tbody></table></div></div>' +
       '<div class="panel"><h2>Por línea y modo</h2><div class="tbl"><table><thead><tr><th>Grupo</th><th class="n">Part.</th><th class="n">Victorias</th><th class="n">KDA</th></tr></thead><tbody>' +
       byRole.map(r => '<tr><td>' + esc(ROLE_NAME[r.k] || r.k) + '</td><td class="n">' + r.t.g + '</td><td class="n">' + pct(r.t.w, r.t.g) + '%</td><td class="n">' + kdaText(r.t.k, r.t.d, r.t.a) + "</td></tr>").join("") +
       byMode.map(r => '<tr><td>' + esc(MODE_NAME[r.k] || r.k) + ' (modo)</td><td class="n">' + r.t.g + '</td><td class="n">' + pct(r.t.w, r.t.g) + '%</td><td class="n">' + kdaText(r.t.k, r.t.d, r.t.a) + "</td></tr>").join("") +
       '</tbody></table></div></div></div>';
 
-    h += '<div class="panel"><h2>Últimas partidas</h2><div class="tbl"><table><thead><tr><th>Fecha</th><th>Campeón</th><th>Modo</th><th class="n">K / D / A</th><th class="n">KDA</th><th class="n">CS</th><th>Resultado</th><th></th></tr></thead><tbody>' +
-      ordered.slice(0, 15).map(m => '<tr><td>' + esc(m.date) + '</td><td>' + (CATMAP[m.champ] ? '<button type="button" class="linkbtn" data-build="' + m.champ + '">' + esc(names[m.champ]) + '</button>' : esc(names[m.champ])) + (m.ex ? '<span class="ex">Ejemplo</span>' : "") + '</td><td>' +
-        esc(m.mode === "sr" ? (ROLE_NAME[m.role] || "Grieta") : MODE_NAME[m.mode]) + '</td><td class="n">' + m.k + " / " + m.d + " / " + m.a + '</td><td class="n">' + kdaText(m.k, m.d, m.a) + '</td><td class="n">' + (m.cs > 0 ? m.cs : "—") +
-        '</td><td class="' + (m.win ? "win" : "loss") + '">' + (m.win ? "Victoria" : "Derrota") + '</td><td><button type="button" class="linkbtn" data-del="' + esc(m.id) + '" aria-label="Eliminar partida">Eliminar</button></td></tr>').join("") +
-      '</tbody></table></div></div>';
+    h += '<div class="panel"><h2>Últimas partidas</h2><div class="hist">' + ordered.slice(0, 15).map(m => matchRow(m, names)).join("") + '</div></div>';
   }
 
   if (API.ok) {
@@ -252,7 +316,10 @@ async function doImport() {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || "No se pudo importar (error " + r.status + ").");
     let added = 0;
-    (j.matches || []).forEach(m => { if (!DB.matches.some(x => x.id === m.id)) { DB.matches.push(m); added++; } });
+    (j.matches || []).forEach(m => {
+      const i = DB.matches.findIndex(x => x.id === m.id);
+      if (i < 0) { DB.matches.push(m); added++; } else DB.matches[i] = m; // actualiza con el detalle (build y runas)
+    });
     DB.ranks = j.ranks || [];
     if (!DB.name) DB.name = j.gameName + "#" + j.tagLine;
     saveDB();
