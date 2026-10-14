@@ -1,6 +1,6 @@
 /* ---------- Estadísticas ---------- */
 const KEY = "forja-lol-v1";
-const blankDB = () => ({ name: "", matches: [], ranks: [], riotId: "", region: "la2" });
+const blankDB = () => ({ name: "", matches: [], ranks: [], riotId: "", region: "la2", cur: "", players: {} });
 let DB = blankDB();
 let confirmClear = false;
 
@@ -33,7 +33,9 @@ function loadDB() {
           matches: o.matches.filter(m => m && typeof m.champ === "string" && m.champ),
           ranks: Array.isArray(o.ranks) ? o.ranks : [],
           riotId: String(o.riotId || ""),
-          region: String(o.region || "la2")
+          region: String(o.region || "la2"),
+          cur: String(o.cur || ""),
+          players: o.players && typeof o.players === "object" ? o.players : {}
         };
         return;
       }
@@ -43,8 +45,12 @@ function loadDB() {
 }
 function saveDB() { lsSet(KEY, JSON.stringify(DB)); }
 
+// Cada jugador importado tiene su propio historial: nunca se mezclan las partidas de dos cuentas.
+function plKey(region, gameName, tagLine) { return region + ":" + (gameName + "#" + tagLine).toLowerCase(); }
 function viewList() {
-  const real = DB.matches.filter(m => !m.ex);
+  const real = DB.matches.filter(m => !m.ex && (DB.cur
+    ? m.pl === DB.cur || (!m.pl && String(m.id).indexOf("riot-") !== 0)
+    : !m.pl && String(m.id).indexOf("riot-") !== 0));
   return real.length ? real : DB.matches.filter(m => m.ex);
 }
 function kdaRatio(k, d, a) { return d === 0 ? k + a : (k + a) / d; }
@@ -183,7 +189,11 @@ function renderStats() {
 
   h += '<div class="who"><label for="pname">Invocador</label><input class="nameinput" id="pname" type="text" maxlength="40" placeholder="Tu nombre de invocador" autocomplete="off">' +
     '<span class="note">Las estadísticas se calculan con las partidas que registras o importas y se guardan en este navegador.</span></div>';
-  h += rankCards(DB.ranks);
+  const keys = Object.keys(DB.players);
+  if (keys.length > 1) {
+    h += '<div class="roles" role="group" aria-label="Jugador">' + keys.map(k => '<button type="button" class="chip" data-player="' + esc(k) + '" aria-pressed="' + (k === DB.cur) + '">' + esc(DB.players[k].label) + '</button>').join("") + '</div>';
+  }
+  h += rankCards(DB.cur && DB.players[DB.cur] ? DB.players[DB.cur].ranks : DB.ranks);
 
   if (showingEx) {
     h += '<div class="banner"><p>Estás viendo partidas de ejemplo. Registra las tuyas y estas se dejan de mostrar.</p>' +
@@ -265,6 +275,13 @@ $("#stats").addEventListener("click", e => {
     renderAll(); showTab("builds"); window.scrollTo(0, 0);
     return;
   }
+  const pl = e.target.closest("[data-player]");
+  if (pl) {
+    DB.cur = pl.dataset.player;
+    const p = DB.players[DB.cur];
+    if (p) { DB.riotId = p.riotId || DB.riotId; DB.region = p.region || DB.region; }
+    saveDB(); renderStats(); return;
+  }
   const del = e.target.closest("[data-del]");
   if (del) { DB.matches = DB.matches.filter(m => m.id !== del.dataset.del); saveDB(); renderStats(); return; }
   const act = e.target.closest("[data-act]");
@@ -287,7 +304,7 @@ $("#stats").addEventListener("submit", e => {
   if (!Number.isFinite(min) || min < 1) { msg.textContent = "Indica la duración de la partida en minutos (mínimo 1)."; return; }
   const date = $("#f-date").value || isoDaysAgo(0);
   const mode = $("#f-mode").value;
-  DB.matches.push({ id: "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), champ: $("#f-champ").value, mode: mode, role: mode === "sr" ? $("#f-role").value : "", k: k, d: d, a: a, cs: cs, min: min, win: $("#f-win").value === "1", date: date, ex: false });
+  DB.matches.push({ id: "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), champ: $("#f-champ").value, mode: mode, role: mode === "sr" ? $("#f-role").value : "", k: k, d: d, a: a, cs: cs, min: min, win: $("#f-win").value === "1", date: date, ex: false, pl: DB.cur || undefined });
   saveDB(); renderStats();
   const m2 = $("#formmsg"); if (m2) { m2.style.color = "var(--good)"; m2.textContent = "Partida guardada."; }
 });
@@ -316,11 +333,14 @@ async function doImport() {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || "No se pudo importar (error " + r.status + ").");
     let added = 0;
+    const pk = plKey(region, j.gameName, j.tagLine);
+    (j.matches || []).forEach(m => { m.pl = pk; });
     (j.matches || []).forEach(m => {
-      const i = DB.matches.findIndex(x => x.id === m.id);
+      const i = DB.matches.findIndex(x => x.id === m.id && x.pl === m.pl);
       if (i < 0) { DB.matches.push(m); added++; } else DB.matches[i] = m; // actualiza con el detalle (build y runas)
     });
-    DB.ranks = j.ranks || [];
+    DB.players[pk] = { label: j.gameName + "#" + j.tagLine, ranks: j.ranks || [], riotId: id, region: region };
+    DB.cur = pk; DB.ranks = j.ranks || [];
     if (!DB.name) DB.name = j.gameName + "#" + j.tagLine;
     saveDB();
     importMsg = { t: (added ? "Se importaron " + added + " partidas nuevas." : "No hay partidas nuevas desde la última importación.") + (j.stored ? " Historial guardado en la base de datos." : ""), k: "ok" };
