@@ -121,10 +121,12 @@ function rankEmblem(tier) {
     '<text x="24" y="35" text-anchor="middle" font-size="22" font-weight="700" fill="var(--tier)">' + esc(letter) + '</text></svg>' +
     (TIERS[tier] ? '<img src="' + EMBLEM_URL + tier.toLowerCase() + '.png" alt="" width="84" height="84" loading="lazy">' : "") + '</span>';
 }
-function rankCards(ranks) {
+function rankCards(ranks, ok, shown) {
   const by = {};
   (ranks || []).forEach(r => { by[r.queue] = r; });
-  if (!ranks || !ranks.length) return "";
+  if (!shown && !(ranks && ranks.length)) return "";
+  const warn = ok === false ? '<p class="note rknote">No se pudo leer el rango de esta cuenta. Vuelve a importarla en un momento.</p>'
+    : (!ranks || !ranks.length) && ok === true ? '<p class="note rknote">Esta cuenta no tiene rango en este servidor. Si debería tenerlo, revisa que el servidor elegido al importar sea el correcto (LAN y LAS son distintos).</p>' : "";
   return '<div class="ranks">' + ["RANKED_SOLO_5x5", "RANKED_FLEX_SR"].map(q => {
     const r = by[q], name = QUEUE_NAME[q];
     if (!r) return '<div class="rank unr">' + rankEmblem("") + '<div><div class="rq">' + name + '</div><div class="rt">Sin clasificar</div></div></div>';
@@ -132,7 +134,7 @@ function rankCards(ranks) {
     const g = (r.wins | 0) + (r.losses | 0);
     return '<div class="rank">' + rankEmblem(r.tier) + '<div><div class="rq">' + name + '</div><div class="rt">' + esc(tn) + (big ? "" : " " + esc(r.rank)) + '</div>' +
       '<div class="rs">' + esc(r.lp) + ' LP · ' + esc(r.wins) + 'V ' + esc(r.losses) + 'D' + (g ? ' · ' + pct(r.wins, g) + '%' : '') + '</div></div></div>';
-  }).join("") + '</div>';
+  }).join("") + '</div>' + warn;
 }
 
 /* ---------- Historial con campeón, build y runas ---------- */
@@ -193,7 +195,8 @@ function renderStats() {
   if (keys.length > 1) {
     h += '<div class="roles" role="group" aria-label="Jugador">' + keys.map(k => '<button type="button" class="chip" data-player="' + esc(k) + '" aria-pressed="' + (k === DB.cur) + '">' + esc(DB.players[k].label) + '</button>').join("") + '</div>';
   }
-  h += rankCards(DB.cur && DB.players[DB.cur] ? DB.players[DB.cur].ranks : DB.ranks);
+  const cp = DB.cur && DB.players[DB.cur];
+  h += cp ? rankCards(cp.ranks, cp.ranksOk, true) : rankCards(DB.ranks);
 
   if (showingEx) {
     h += '<div class="banner"><p>Estás viendo partidas de ejemplo. Registra las tuyas y estas se dejan de mostrar.</p>' +
@@ -339,7 +342,7 @@ async function doImport() {
       const i = DB.matches.findIndex(x => x.id === m.id && x.pl === m.pl);
       if (i < 0) { DB.matches.push(m); added++; } else DB.matches[i] = m; // actualiza con el detalle (build y runas)
     });
-    DB.players[pk] = { label: j.gameName + "#" + j.tagLine, ranks: j.ranks || [], riotId: id, region: region };
+    DB.players[pk] = { label: j.gameName + "#" + j.tagLine, ranks: j.ranks || [], ranksOk: j.ranksOk, riotId: id, region: region };
     DB.cur = pk; DB.ranks = j.ranks || [];
     if (!DB.name) DB.name = j.gameName + "#" + j.tagLine;
     saveDB();
