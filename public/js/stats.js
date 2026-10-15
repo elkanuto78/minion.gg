@@ -112,6 +112,12 @@ const TIERS = {
 const EMBLEM_URL = "https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblem/emblem-";
 const QUEUE_NAME = { RANKED_SOLO_5x5: "Solo/Dúo", RANKED_FLEX_SR: "Flex" };
 
+// Cuando carga la imagen oficial se oculta el escudo de respaldo
+document.addEventListener("load", e => {
+  const t = e.target;
+  if (t && t.tagName === "IMG" && t.parentNode && t.parentNode.classList && t.parentNode.classList.contains("emblem")) t.parentNode.classList.add("ok");
+}, true);
+
 function rankEmblem(tier) {
   const t = TIERS[tier] || ["", "#6b7280"];
   const letter = t[0] ? t[0].charAt(0) : "?";
@@ -273,7 +279,7 @@ $("#stats").addEventListener("input", e => {
 $("#stats").addEventListener("click", e => {
   const bd = e.target.closest("[data-build]");
   if (bd) {
-    S.champ = bd.dataset.build; S.mode = "sr"; S.brole = ""; S.v = 0;
+    S.champ = bd.dataset.build; S.mode = "sr"; S.brole = ""; S.v = 0; S.r = 0;
     const c = CATMAP[S.champ]; S.role = (c && (c.main || c.roles[0])) || "mid"; S.q = ""; $("#search").value = "";
     renderAll(); showTab("builds"); window.scrollTo(0, 0);
     return;
