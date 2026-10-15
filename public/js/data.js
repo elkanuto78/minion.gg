@@ -317,7 +317,68 @@ const ARCH = {
   }
 };
 
+/* Dos variantes extra por arquetipo (la tercera es la "Estándar" de ARCH). Solo usan nombres ya verificados en Data Dragon. */
+const R = (key, main, sec) => ({ key, main, sec });
+const IN1 = "Inspiración: Biscuit Delivery, Cosmic Insight", IN2 = "Inspiración: Magical Footwear, Biscuit Delivery";
+const ALT = {
+  "ap-mage": [
+    { name: "Control y daño sostenido", runes: R("Phase Rush", "Hechicería: Nimbus Cloak, Absolute Focus, Gathering Storm", IN1), boots: "Sorcerer's Shoes", core: ["Rylai's Crystal Scepter", "Shadowflame", "Rabadon's Deathcap"],
+      tip: "Aplica ralentización constante y pelea en cuanto el rival entre en tu alcance; Phase Rush te ayuda a salir de las peleas cuerpo a cuerpo." },
+    { name: "Seguridad contra asesinos", runes: R("Arcane Comet", "Hechicería: Manaflow Band, Transcendence, Gathering Storm", "Resolución: Second Wind, Unflinching"), boots: "Ionian Boots of Lucidity", core: ["Luden's Echo", "Zhonya's Hourglass", "Rabadon's Deathcap"],
+      tip: "Compra Zhonya's pronto si los asesinos te persiguen: la prioridad es seguir vivo para lanzar todas tus habilidades." }
+  ],
+  "ap-assassin": [
+    { name: "Ráfaga y alcance", runes: R("Electrocute", "Dominación: Sudden Impact, Ultimate Hunter", "Hechicería: Absolute Focus, Gathering Storm"), boots: "Sorcerer's Shoes", core: ["Luden's Echo", "Shadowflame", "Rabadon's Deathcap"],
+      tip: "Con más alcance puedes golpear sin exponerte tanto; busca eliminar a un objetivo y salir antes de que reaccionen." },
+    { name: "Resistente y flexible", runes: R("Phase Rush", "Hechicería: Nimbus Cloak, Absolute Focus, Gathering Storm", IN2), boots: "Sorcerer's Shoes", core: ["Hextech Rocketbelt", "Zhonya's Hourglass", "Rabadon's Deathcap"],
+      tip: "Útil cuando el rival tiene mucho control de masas o asesinos: entra con cuidado y usa Zhonya's para sobrevivir a la respuesta." }
+  ],
+  "ad-assassin": [
+    { name: "Ráfaga contra tanques", runes: R("Electrocute", "Dominación: Sudden Impact, Ultimate Hunter", "Precisión: Triumph, Coup de Grace"), boots: "Ionian Boots of Lucidity", core: ["Youmuu's Ghostblade", "Serylda's Grudge", "Lord Dominik's Regards"],
+      tip: "Perfora armadura y ralentiza: ideal cuando el equipo rival tiene tanques y luchadores en lugar de objetivos frágiles." },
+    { name: "Duelista resistente", runes: R("Hail of Blades", "Dominación: Sudden Impact, Ultimate Hunter", "Resolución: Bone Plating, Unflinching"), boots: "Plated Steelcaps", core: ["Stridebreaker", "Black Cleaver", "Death's Dance"],
+      tip: "Para peleas largas y contra mucho daño físico: ganas vida y aguantas más antes de que te eliminen." }
+  ],
+  "adc-crit": [
+    { name: "Aguante y sostenido", runes: R("Fleet Footwork", "Precisión: Presence of Mind, Legend: Alacrity, Coup de Grace", IN2), boots: "Berserker's Greaves", core: ["Immortal Shieldbow", "Rapid Firecannon", "Infinity Edge"],
+      tip: "Fleet Footwork te cura y acelera en la línea; Immortal Shieldbow te da un escudo cuando más lo necesitas." },
+    { name: "Contra tanques y asesinos", runes: R("Lethal Tempo", "Precisión: Triumph, Legend: Alacrity, Last Stand", "Resolución: Bone Plating, Unflinching"), boots: "Berserker's Greaves", core: ["Kraken Slayer", "Infinity Edge", "Lord Dominik's Regards"],
+      tip: "Daño alto contra equipos con mucha vida y armadura. Cuida tu posición: eres frágil sin tu frontline." }
+  ],
+  "fighter": [
+    { name: "Bruiser resistente", runes: R("Grasp of the Undying", "Resolución: Demolish, Conditioning, Overgrowth", "Precisión: Triumph, Legend: Alacrity"), boots: "Plated Steelcaps", core: ["Stridebreaker", "Sterak's Gage", "Dead Man's Plate"],
+      tip: "Elige esta versión cuando tengas que aguantar en la línea y pelear largas peleas sin morir primero." },
+    { name: "Daño y persecución", runes: R("Conqueror", "Precisión: Triumph, Legend: Bloodline, Last Stand", IN2), boots: "Mobility Boots", core: ["Blade of the Ruined King", "Black Cleaver", "Death's Dance"],
+      tip: "Para perseguir y rematar: más daño y movilidad, pero cuídate de las peleas en inferioridad." }
+  ],
+  "tank": [
+    { name: "Anti daño físico", runes: R("Aftershock", "Resolución: Font of Life, Bone Plating, Unflinching", IN2), boots: "Plated Steelcaps", core: ["Thornmail", "Randuin's Omen", "Dead Man's Plate"],
+      tip: "Cuando el rival tiene tiradores y luchadores: la armadura y las heridas graves te hacen un muro." },
+    { name: "Anti daño mágico y vida", runes: R("Grasp of the Undying", "Resolución: Font of Life, Bone Plating, Overgrowth", "Hechicería: Manaflow Band, Transcendence"), boots: "Ionian Boots of Lucidity", core: ["Warmog's Armor", "Force of Nature", "Spirit Visage"],
+      tip: "Contra equipos con mucho daño mágico: más vida y resistencia mágica, y tus habilidades se repiten más seguido." }
+  ],
+  "sup-enchanter": [
+    { name: "Escudos y protección", runes: R("Summon Aery", "Hechicería: Manaflow Band, Transcendence, Gathering Storm", IN1), boots: "Ionian Boots of Lucidity", core: ["Shurelya's Battlesong", "Mikael's Blessing", "Redemption"],
+      tip: "Mantén vivo a tu tirador y ayuda a todo el equipo a entrar o salir de las peleas." },
+    { name: "Daño y apoyo", runes: R("Arcane Comet", "Hechicería: Manaflow Band, Transcendence, Scorch", IN1), boots: "Ionian Boots of Lucidity", core: ["Imperial Mandate", "Staff of Flowing Water", "Ardent Censer"],
+      tip: "Si tu línea es agresiva, combina daño ligero con apoyo para ganar la línea sin descuidar a tu aliado." }
+  ],
+  "sup-tank": [
+    { name: "Entrar y proteger", runes: R("Aftershock", "Resolución: Font of Life, Bone Plating, Unflinching", IN1), boots: "Plated Steelcaps", core: ["Zeke's Convergence", "Locket of the Iron Solari", "Thornmail"],
+      tip: "Busca entrar primero, absorber el daño y dar un escudo al equipo con Locket." },
+    { name: "Frontline duradera", runes: R("Aftershock", "Resolución: Font of Life, Bone Plating, Unflinching", IN1), boots: "Plated Steelcaps", core: ["Sunfire Aegis", "Randuin's Omen", "Redemption"],
+      tip: "Más aguante y curación de equipo para sostener peleas largas alrededor de tu tirador." }
+  ],
+  "sup-mage": [
+    { name: "Poke y hostigamiento", runes: R("Arcane Comet", "Hechicería: Manaflow Band, Transcendence, Gathering Storm", IN1), boots: "Sorcerer's Shoes", core: ["Luden's Echo", "Rylai's Crystal Scepter", "Void Staff"],
+      tip: "Castiga con habilidades de largo alcance y obliga al rival a retroceder antes de iniciar peleas." },
+    { name: "Utilidad y curación", runes: R("Summon Aery", "Hechicería: Manaflow Band, Transcendence, Scorch", IN1), boots: "Ionian Boots of Lucidity", core: ["Imperial Mandate", "Zhonya's Hourglass", "Redemption"],
+      tip: "Para equipos que necesitan control de masas y curación: tú das el ritmo de la pelea." }
+  ]
+};
+Object.keys(ALT).forEach(k => ALT[k].forEach(a => { a.sit = ARCH[k].sit; }));
+
 (function (g) {
-  g.MinionData = { ROLES, MODES, MODE_NAME, ROLE_NAME, DMG, DIFF, CH, BY_ID, ROLE_MAP, CLASS_ES, ARCH };
+  g.MinionData = { ROLES, MODES, MODE_NAME, ROLE_NAME, DMG, DIFF, CH, BY_ID, ROLE_MAP, CLASS_ES, ARCH, ALT };
   if (typeof module !== "undefined" && module.exports) module.exports = g.MinionData;
 })(typeof globalThis !== "undefined" ? globalThis : this);
