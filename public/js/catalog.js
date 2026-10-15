@@ -60,6 +60,19 @@
       out.itemEs[id] = (es[id] && es[id].name) || it.name;
     });
 
+    // Objetos finales (sin mejora posterior) de la Grieta, para la lista "más objetos" por clase
+    out.legendary = [];
+    Object.keys(en).forEach(id => {
+      const it = en[id];
+      if (!it || !it.name || !out.itemEn[id] || it.into && it.into.length) return;
+      if (it.maps && it.maps["11"] === false) return;
+      if (it.requiredChampion || it.consumed || it.hideFromAll || it.inStore === false) return;
+      const tg = it.tags || [], g = (it.gold && it.gold.total) | 0;
+      if (g < 2200 || tg.indexOf("Boots") >= 0 || tg.indexOf("Consumable") >= 0 || tg.indexOf("Trinket") >= 0 || tg.indexOf("Jungle") >= 0 || tg.indexOf("Lane") >= 0) return;
+      out.legendary.push({ id: id, t: tg, g: g });
+    });
+    out.legendary.sort((a, b) => b.g - a.g);
+
     const rEs = {};
     ((raw.runesEs) || []).forEach(t => { rEs[t.id] = t; });
     ((raw.runesEn) || []).forEach(t => {
@@ -246,6 +259,19 @@
     const key = archetype(c, role), a = archVariant(key, v);
     return { arch: key, label: D.ARCH[key].label, runes: a.runes, summs: summsFor(key, role), skills: a.skills, start: startFor(key, role), boots: a.boots, core: a.core, sit: a.sit, tip: a.tip };
   }
+  // Fragmentos de estadísticas recomendados (ids de Riot: ataque, flexible, defensa)
+  const SHARD_BY = { "ap-mage": [5008, 5008, 5011], "ap-assassin": [5008, 5008, 5011], "ad-assassin": [5008, 5008, 5011], "adc-crit": [5005, 5008, 5011],
+    "fighter": [5008, 5008, 5011], "tank": [5008, 5001, 5001], "sup-enchanter": [5008, 5001, 5001], "sup-tank": [5008, 5001, 5001], "sup-mage": [5008, 5008, 5001] };
+  function shardsFor(key) { return SHARD_BY[key] || SHARD_BY.fighter; }
+  // Objetos de cada clase según las etiquetas de Data Dragon
+  const ITEM_TAGS = { "ap-mage": ["SpellDamage"], "ap-assassin": ["SpellDamage"], "sup-mage": ["SpellDamage"], "ad-assassin": ["Damage"], "fighter": ["Damage"],
+    "adc-crit": ["CriticalStrike", "AttackSpeed", "Damage"], "tank": ["Armor", "SpellBlock", "Health"], "sup-tank": ["Armor", "SpellBlock", "Health"],
+    "sup-enchanter": ["ManaRegen", "AbilityHaste", "SpellDamage"] };
+  function moreItems(dd, key, exclude) {
+    const tags = ITEM_TAGS[key] || [], skip = {};
+    (exclude || []).forEach(n => { const id = dd.itemByName[norm(n)]; if (id) skip[id] = true; });
+    return (dd.legendary || []).filter(it => !skip[it.id] && it.t.some(t => tags.indexOf(t) >= 0)).slice(0, 30);
+  }
   function variantNames(c, mode, role) {
     const key = archetype(c, mode === "sr" ? role : c.main);
     return ["Estándar"].concat((D.ALT[key] || []).map(x => x.name));
@@ -256,8 +282,9 @@
     const cur = c.curated;
     v = v | 0;
     if (mode === "sr") {
-      if (cur && cur.roles[role] && !v) return { kind: "detailed", b: cur.roles[role] };
-      return { kind: "base", b: baseBuild(c, role, v) };
+      const key = archetype(c, role), alt = archVariant(key, v ? (v + 1) % 3 : 1).runes; // segunda página de runas
+      if (cur && cur.roles[role] && !v) return { kind: "detailed", b: cur.roles[role], alt: alt, arch: key };
+      return { kind: "base", b: baseBuild(c, role, v), alt: alt, arch: key };
     }
     if (cur && !v) return { kind: "detailed", b: mode === "aram" ? cur.aram : cur.arena };
     const a = archVariant(archetype(c, c.main), v);
@@ -314,7 +341,7 @@
     };
   }
 
-  const api = { variantNames, norm, reduceDD, makeResolver, parseTreeLine, buildCatalog, classText, archetype, getBuild, audit, CDN, ROLE_ORDER, PLACEHOLDERS };
+  const api = { variantNames, shardsFor, moreItems, norm, reduceDD, makeResolver, parseTreeLine, buildCatalog, classText, archetype, getBuild, audit, CDN, ROLE_ORDER, PLACEHOLDERS };
   root.Catalog = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
