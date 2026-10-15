@@ -235,20 +235,32 @@
     return ["Doran's Ring", "Health Potion"];
   }
 
-  function baseBuild(c, role) {
-    const key = archetype(c, role), a = D.ARCH[key];
-    return { arch: key, label: a.label, runes: a.runes, summs: summsFor(key, role), skills: a.skills, start: startFor(key, role), boots: a.boots, core: a.core, sit: a.sit, tip: a.tip };
+  // v = 0 (estándar), 1 o 2 (variantes de la clase)
+  function archVariant(key, v) {
+    const a = D.ARCH[key];
+    if (!v) return Object.assign({ name: "Estándar" }, a);
+    const x = (D.ALT[key] || [])[v - 1];
+    return x ? Object.assign({}, a, x) : a;
+  }
+  function baseBuild(c, role, v) {
+    const key = archetype(c, role), a = archVariant(key, v);
+    return { arch: key, label: D.ARCH[key].label, runes: a.runes, summs: summsFor(key, role), skills: a.skills, start: startFor(key, role), boots: a.boots, core: a.core, sit: a.sit, tip: a.tip };
+  }
+  function variantNames(c, mode, role) {
+    const key = archetype(c, mode === "sr" ? role : c.main);
+    return ["Estándar"].concat((D.ALT[key] || []).map(x => x.name));
   }
 
   // kind: "detailed" (escrita a mano para ese campeón) o "base" (build base de su clase)
-  function getBuild(c, mode, role) {
+  function getBuild(c, mode, role, v) {
     const cur = c.curated;
+    v = v | 0;
     if (mode === "sr") {
-      if (cur && cur.roles[role]) return { kind: "detailed", b: cur.roles[role] };
-      return { kind: "base", b: baseBuild(c, role) };
+      if (cur && cur.roles[role] && !v) return { kind: "detailed", b: cur.roles[role] };
+      return { kind: "base", b: baseBuild(c, role, v) };
     }
-    if (cur) return { kind: "detailed", b: mode === "aram" ? cur.aram : cur.arena };
-    const a = D.ARCH[archetype(c, c.main)];
+    if (cur && !v) return { kind: "detailed", b: mode === "aram" ? cur.aram : cur.arena };
+    const a = archVariant(archetype(c, c.main), v);
     const items = a.core.concat(a.sit.slice(0, 2).map(s => s[0]));
     return { kind: "base", b: mode === "aram" ? { key: a.runes.key, items: items, tip: a.tip, label: a.label } : { items: items.slice(0, 4), tip: a.tip, label: a.label } };
   }
@@ -285,6 +297,7 @@
     };
     D.CH.forEach(c => { Object.keys(c.roles).forEach(r => check(c.roles[r])); check(c.aram); check(c.arena); });
     Object.keys(D.ARCH).forEach(k => check(D.ARCH[k]));
+    Object.keys(D.ALT || {}).forEach(k => D.ALT[k].forEach(a => check(a)));
     ROLE_ORDER.forEach(r => Object.keys(D.ARCH).forEach(k => summsFor(k, r).forEach(s => chk("spells", s, x => res.spell(x)))));
     chk("spells", "Mark", x => res.spell(x));
 
@@ -301,7 +314,7 @@
     };
   }
 
-  const api = { norm, reduceDD, makeResolver, parseTreeLine, buildCatalog, classText, archetype, getBuild, audit, CDN, ROLE_ORDER, PLACEHOLDERS };
+  const api = { variantNames, norm, reduceDD, makeResolver, parseTreeLine, buildCatalog, classText, archetype, getBuild, audit, CDN, ROLE_ORDER, PLACEHOLDERS };
   root.Catalog = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
