@@ -273,7 +273,7 @@ $("#stats").addEventListener("input", e => {
 $("#stats").addEventListener("click", e => {
   const bd = e.target.closest("[data-build]");
   if (bd) {
-    S.champ = bd.dataset.build; S.mode = "sr";
+    S.champ = bd.dataset.build; S.mode = "sr"; S.brole = ""; S.v = 0;
     const c = CATMAP[S.champ]; S.role = (c && (c.main || c.roles[0])) || "mid"; S.q = ""; $("#search").value = "";
     renderAll(); showTab("builds"); window.scrollTo(0, 0);
     return;
