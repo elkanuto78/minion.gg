@@ -168,7 +168,7 @@ function riotTips(c) {
 }
 
 /* ---------- Builds ---------- */
-const S = { mode: "sr", role: "mid", champ: "ahri", q: "" };
+const S = { mode: "sr", role: "mid", champ: "ahri", q: "", brole: "", v: 0 }; // brole: línea elegida en la build; v: variante 0-2
 
 function champsForRole(role) { return CAT.filter(c => c.roles.indexOf(role) >= 0); }
 function visibleChamps() {
@@ -212,8 +212,10 @@ function renderBuild() {
   const c = CATMAP[S.champ];
   if (!c) { $("#build").innerHTML = '<p class="note">Elige un campeón de la lista para ver su build.</p>'; return; }
   ensureDetail(c);
-  const role = S.role || c.main || c.roles[0] || "mid";
-  const gb = Catalog.getBuild(c, S.mode, role), b = gb.b, base = gb.kind === "base";
+  const role = S.brole || S.role || c.main || c.roles[0] || "mid";
+  const vnames = Catalog.variantNames(c, S.mode, role);
+  if (S.v >= vnames.length) S.v = 0;
+  const gb = Catalog.getBuild(c, S.mode, role, S.v), b = gb.b, base = gb.kind === "base";
   const splash = RES && c.online && c.id ? RES.splash(c.id) : "";
   const classes = Catalog.classText(c);
 
@@ -223,6 +225,15 @@ function renderBuild() {
     '<span class="tag">' + esc(MODE_NAME[S.mode]) + "</span>" +
     (S.mode === "sr" ? '<span class="tag">' + esc(ROLE_NAME[role]) + "</span>" : "") +
     '<span class="tag">' + esc(classes || DMG[c.dmg]) + '</span><span class="tag">' + esc(DIFF[c.diff]) + "</span></div></div></div>";
+
+  if (S.mode === "sr") {
+    html += '<div class="vrow" role="group" aria-label="Línea de la build">' + ROLES.map(r =>
+      '<button type="button" class="chip" data-brole="' + r.id + '" aria-pressed="' + (role === r.id) + '">' + roleIcon(r.id) + r.n +
+      (c.roles.indexOf(r.id) < 0 ? '<small title="Línea poco habitual para este campeón">*</small>' : "") + "</button>").join("") + "</div>";
+    if (c.roles.indexOf(role) < 0) html += '<p class="note">* Línea poco habitual para ' + esc(c.name) + ": la build se adapta a su clase y es solo orientativa.</p>";
+  }
+  html += '<div class="vrow" role="group" aria-label="Variante de la build">' + vnames.map((n, i) =>
+    '<button type="button" class="chip vbtn" data-v="' + i + '" aria-pressed="' + (S.v === i) + '"><b>' + (i + 1) + "</b> " + esc(n) + "</button>").join("") + "</div>";
 
   if (base) {
     html += '<p class="note basenote">Esta es una build base para ' + esc(b.label) + ". Sirve como punto de partida, pero no está ajustada a las habilidades de " +
@@ -258,19 +269,24 @@ function renderAll() { ensureValid(); renderPicker(); renderBuild(); }
 $("#modes").addEventListener("click", e => {
   const b = e.target.closest("[data-mode]");
   if (!b) return;
-  S.mode = b.dataset.mode; S.q = ""; $("#search").value = "";
+  S.mode = b.dataset.mode; S.q = ""; S.v = 0; S.brole = ""; $("#search").value = "";
   renderAll();
 });
 $("#roles").addEventListener("click", e => {
   const b = e.target.closest("[data-role]");
   if (!b || b.disabled) return;
-  S.role = S.role === b.dataset.role ? "" : b.dataset.role; renderAll(); // al pulsar la línea elegida se deselecciona y se ven todas
+  S.role = S.role === b.dataset.role ? "" : b.dataset.role; S.brole = ""; S.v = 0; renderAll(); // al pulsar la línea elegida se deselecciona y se ven todas
 });
 $("#champs").addEventListener("click", e => {
   const b = e.target.closest("[data-champ]");
   if (!b) return;
-  S.champ = S.champ === b.dataset.champ ? "" : b.dataset.champ; // pulsar de nuevo deselecciona
+  S.champ = S.champ === b.dataset.champ ? "" : b.dataset.champ; S.brole = ""; S.v = 0; // pulsar de nuevo deselecciona
   document.querySelectorAll("#champs .champ").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.champ === S.champ)));
   renderBuild();
+});
+$("#build").addEventListener("click", e => {
+  const r = e.target.closest("[data-brole]"), v = e.target.closest("[data-v]");
+  if (r) { S.brole = r.dataset.brole; S.v = 0; renderBuild(); }
+  else if (v) { S.v = Number(v.dataset.v) || 0; renderBuild(); }
 });
 $("#search").addEventListener("input", e => { S.q = e.target.value; renderPicker(); });
