@@ -43,7 +43,7 @@ document.querySelector(".tabs").addEventListener("click", e => {
 
 /* ---------- Catálogo oficial de Riot (Data Dragon) ---------- */
 const DD_ROOT = "https://ddragon.leagueoflegends.com/";
-const DD_CACHE = "minion-dd-v2";
+const DD_CACHE = "minion-dd-v3";
 let DD = null;            // datos reducidos de Data Dragon (o null si no cargaron)
 let RES = null;           // resolvedor de nombres a imágenes
 let CAT = [];             // campeones, ordenados por nombre
@@ -142,12 +142,26 @@ function keystone(name) {
   const r = RES ? RES.rune(name) : null;
   return '<div class="ks">' + (r ? icoImg(r.img, 56, "rune") : "") + '<p class="key">' + esc(r ? r.name : name) + "</p></div>";
 }
-function runeBlock(r) {
+function shardRow(key) {
+  if (!RES) return "";
+  const li = Catalog.shardsFor(key).map(id => { const s = RES.shard(id); return s ? '<li class="item">' + icoImg(s.img, 22) + "<span>" + esc(s.name) + "</span></li>" : ""; }).join("");
+  return li ? '<p class="lbl">Fragmentos de estadísticas</p><ul class="rl">' + li + "</ul>" : "";
+}
+function runeBlock(r, arch, alt) {
   const main = Catalog.parseTreeLine(r.main), sec = Catalog.parseTreeLine(r.sec);
   const mt = RES ? RES.tree(main.tree) : null, st = RES ? RES.tree(sec.tree) : null;
-  return '<div class="runes"><h3>Runas</h3>' + keystone(r.key) +
+  return '<div class="runes"><h3>Runas</h3>' + (alt ? '<div class="vrow" role="group" aria-label="Página de runas">' +
+    ["Página 1", "Página 2"].map((n, i) => '<button type="button" class="chip" data-r="' + i + '" aria-pressed="' + (S.r === i) + '">' + n + "</button>").join("") + "</div>" : "") + keystone(r.key) +
     '<p class="lbl">Árbol principal · ' + esc(mt ? mt.name : main.tree) + '</p><ul class="rl">' + main.runes.map(runeLi).join("") + "</ul>" +
-    '<p class="lbl">Árbol secundario · ' + esc(st ? st.name : sec.tree) + '</p><ul class="rl">' + sec.runes.map(runeLi).join("") + "</ul></div>";
+    '<p class="lbl">Árbol secundario · ' + esc(st ? st.name : sec.tree) + '</p><ul class="rl">' + sec.runes.map(runeLi).join("") + "</ul>" + shardRow(arch) + "</div>";
+}
+function moreItemsHtml(arch, b) {
+  if (!DD || !DD.legendary) return "";
+  const have = [].concat(b.core || [], b.boots || [], (b.sit || []).map(s => s[0]), b.items || []);
+  const list = Catalog.moreItems(DD, arch, have);
+  if (!list.length) return "";
+  return '<details class="more"><summary>Más objetos para esta clase (' + list.length + ")</summary><p class=\"note\">Todos los objetos finales de la Grieta que encajan con este tipo de campeón, para que completes la build según la partida.</p><div class=\"mi\">" +
+    list.map(it => { const r = RES.itemById(it.id); return '<span class="item" title="' + esc(r.name) + '">' + icoImg(r.img, 32) + "<span>" + esc(r.name) + "</span></span>"; }).join("") + "</div></details>";
 }
 function abilitiesHtml(c) {
   const d = DETAIL[c.k];
@@ -168,7 +182,7 @@ function riotTips(c) {
 }
 
 /* ---------- Builds ---------- */
-const S = { mode: "sr", role: "mid", champ: "ahri", q: "", brole: "", v: 0 }; // brole: línea elegida en la build; v: variante 0-2
+const S = { mode: "sr", role: "mid", champ: "ahri", q: "", brole: "", v: 0, r: 0 }; // brole: línea elegida en la build; v: variante 0-2
 
 function champsForRole(role) { return CAT.filter(c => c.roles.indexOf(role) >= 0); }
 function visibleChamps() {
@@ -242,7 +256,7 @@ function renderBuild() {
   }
 
   if (S.mode === "sr") {
-    html += '<div class="cols">' + runeBlock(b.runes) +
+    html += '<div class="cols">' + runeBlock(S.r === 1 && gb.alt ? gb.alt : b.runes, gb.arch || Catalog.archetype(c, role), gb.alt) +
       "<div><h3>Hechizos de invocador</h3>" + spellList(b.summs) +
       '<h3 class="sp">Orden de habilidades</h3><p class="m0">' + esc(b.skills) + "</p></div></div>";
     html += "<div><h3>Camino de objetos</h3>" + itemPath(b) + "</div>";
@@ -257,6 +271,7 @@ function renderBuild() {
     html += "<div><h3>Objetos en orden de prioridad</h3>" + itemList(b.items) +
       '<p class="note" style="margin-top:10px">En cada ronda eliges aumentos: prioriza los que refuercen tu plan de daño o de supervivencia.</p></div>';
   }
+  if (S.mode === "sr") html += moreItemsHtml(gb.arch || Catalog.archetype(c, role), b);
   html += '<div class="tipbox"><h3>Consejo de juego</h3><p>' + esc(b.tip) + "</p></div>";
   if (base) html += riotTips(c);
   html += abilitiesHtml(c);
@@ -269,24 +284,25 @@ function renderAll() { ensureValid(); renderPicker(); renderBuild(); }
 $("#modes").addEventListener("click", e => {
   const b = e.target.closest("[data-mode]");
   if (!b) return;
-  S.mode = b.dataset.mode; S.q = ""; S.v = 0; S.brole = ""; $("#search").value = "";
+  S.mode = b.dataset.mode; S.q = ""; S.v = 0; S.r = 0; S.brole = ""; $("#search").value = "";
   renderAll();
 });
 $("#roles").addEventListener("click", e => {
   const b = e.target.closest("[data-role]");
   if (!b || b.disabled) return;
-  S.role = S.role === b.dataset.role ? "" : b.dataset.role; S.brole = ""; S.v = 0; renderAll(); // al pulsar la línea elegida se deselecciona y se ven todas
+  S.role = S.role === b.dataset.role ? "" : b.dataset.role; S.brole = ""; S.v = 0; S.r = 0; renderAll(); // al pulsar la línea elegida se deselecciona y se ven todas
 });
 $("#champs").addEventListener("click", e => {
   const b = e.target.closest("[data-champ]");
   if (!b) return;
-  S.champ = S.champ === b.dataset.champ ? "" : b.dataset.champ; S.brole = ""; S.v = 0; // pulsar de nuevo deselecciona
+  S.champ = S.champ === b.dataset.champ ? "" : b.dataset.champ; S.brole = ""; S.v = 0; S.r = 0; // pulsar de nuevo deselecciona
   document.querySelectorAll("#champs .champ").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.champ === S.champ)));
   renderBuild();
 });
 $("#build").addEventListener("click", e => {
-  const r = e.target.closest("[data-brole]"), v = e.target.closest("[data-v]");
-  if (r) { S.brole = r.dataset.brole; S.v = 0; renderBuild(); }
-  else if (v) { S.v = Number(v.dataset.v) || 0; renderBuild(); }
+  const r = e.target.closest("[data-brole]"), v = e.target.closest("[data-v]"), pg = e.target.closest("[data-r]");
+  if (r) { S.brole = r.dataset.brole; S.v = 0; S.r = 0; renderBuild(); }
+  else if (v) { S.v = Number(v.dataset.v) || 0; S.r = 0; renderBuild(); }
+  else if (pg) { S.r = Number(pg.dataset.r) || 0; renderBuild(); }
 });
 $("#search").addEventListener("input", e => { S.q = e.target.value; renderPicker(); });
